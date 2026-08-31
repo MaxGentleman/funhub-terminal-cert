@@ -805,11 +805,18 @@ function testPanel(d, code, simple) {
   var def = testDef(code), dr = ui.draft, e = ui.blocked ? draftErrors() : {};
   var h = '<div class="' + (simple ? 'stest-body' : 'test-body') + '">';
   if (!simple) h += '<div class="howto"><b>' + esc(def[ui.lang].n) + '</b>' + esc(def[ui.lang].d) + '</div>';
-  if (simple) h += '<div class="bigrow">'
-    + '<button class="bigbtn" data-act="goguide" data-dev="' + att(d.id) + '"><span class="ico">📖</span>' + esc(t("btnHow")) + '<small>' + esc(d.pos) + '</small></button>'
-    + '</div>';
-
   var isRefund = MANUAL_CODES.indexOf(code) >= 0 || code === "INT-REF";
+
+  if (simple) {
+    /* One line saying what the test actually is — "AMEX payment" means nothing
+       to someone who has never been told what AMEX is. */
+    var sd = def[ui.lang].s;
+    if (sd) h += '<div class="tdesc">' + fmt(sd) + '</div>';
+    /* The guide is the refund procedure, so it only belongs on a refund test. */
+    if (isRefund) h += '<div class="bigrow">'
+      + '<button class="bigbtn" data-act="goguide" data-dev="' + att(d.id) + '"><span class="ico">📖</span>' + esc(t("btnHow")) + '<small>' + esc(d.pos) + '</small></button>'
+      + '</div>';
+  }
   if (!simple) {
     var pr = procFor(d, code);
     if (pr) {
