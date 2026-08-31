@@ -44,6 +44,8 @@ export const PROCS = {
      "Le remboursement est approuvé et **le reçu s'imprime**."]},
 
 "pos:Intercard|INT-REF":{
+ applies_en:"Use this for **POS and teller** transactions - a teller sale is refunded here, not on the teller terminal.",
+ applies_fr:"Utilisez ceci pour les transactions **PDV et guichet** - une vente au guichet se rembourse ici, pas sur le terminal du guichet.",
  warn_en:"Intercard is a **hybrid**: the terminal is driven from the POS, but **you key the amount yourself** - nothing is pulled from the original sale. Read the amount off the customer's receipt and check it twice. There is no separate manual procedure on these terminals; this is it.",
  warn_fr:"Intercard est un **hybride** : le terminal est piloté par le PDV, mais **vous tapez le montant vous-même** - rien n'est repris de la vente d'origine. Lisez le montant sur le reçu du client et vérifiez-le deux fois. Il n'y a pas de procédure manuelle distincte sur ces terminaux : c'est celle-ci.",
  en:["Make sure you are **logged in as yourself**. If the till is on someone else's session, press [[Log Out]] and sign back in with your own [[User Name]] and [[Password]].",
@@ -112,6 +114,8 @@ export const PROCS = {
      "Le remboursement est approuvé et **le reçu s'imprime**."]},
 
 "pos:Embed|INT-REF":{
+ applies_en:"Use this for **POS and kiosk** transactions - a kiosk sale is refunded here, not on the kiosk.",
+ applies_fr:"Utilisez ceci pour les transactions **PDV et bornes** - une vente de borne se rembourse ici, pas sur la borne.",
  warn_en:"Embed drives a **Windcave** pin pad - the one with a physical keypad. The refund is a **void**, so it goes back through Functions rather than through the sale itself. Note the receipt number in step 4 before you leave that screen; you cannot search for it later without it.",
  warn_fr:"Embed pilote un NIP pad **Windcave** - celui avec un clavier physique. Le remboursement est une **annulation (void)**, il passe donc par Functions et non par la vente elle-même. Notez le numéro de reçu à l'étape 4 avant de quitter l'écran : sans lui, impossible de le retrouver ensuite.",
  en:["From the Embed sale screen, **open the functions menu**.",

@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Refund Cheat Sheets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   These sheets get printed once and taped beside a till. Everything here is
+   built for that: black on white, hierarchy carried by weight and rule rather
+   than colour, so a mono laser copy reads the same as the original. The screen
+   chrome follows the viewer's theme; the sheet itself is always paper.
+--------------------------------------------------------------------------- */
+
+:root{
+  --paper:#ffffff;
+  --ink:#16181c;
+  --ink-2:#4a5058;
+  --ink-3:#7c828b;
+  --rule:#c9cdd4;
+  --rule-2:#e6e8ec;
+  --band:#f2f3f5;
+  --go:#0b6b3a;          /* integrated: the way it is supposed to work */
+  --fallback:#8a4b08;    /* manual: only when the first way fails */
+  --stop:#a81e1e;        /* the two or three traps that cost money */
+
+  /* chrome only */
+  --app-bg:#eceef1;
+  --app-ink:#20242a;
+  --app-ink-2:#5a616a;
+  --app-line:#d3d7dd;
+  --app-surface:#ffffff;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --app-bg:#14171b;
+    --app-ink:#e8eaee;
+    --app-ink-2:#9aa1ab;
+    --app-line:#2c3138;
+    --app-surface:#1c2026;
+  }
+}
+:root[data-theme="dark"]{
+  --app-bg:#14171b;
+  --app-ink:#e8eaee;
+  --app-ink-2:#9aa1ab;
+  --app-line:#2c3138;
+  --app-surface:#1c2026;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--app-bg); color:var(--app-ink);
+  font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ------------------------------------------------------------------ chrome */
+.chrome{
+  position:sticky; top:0; z-index:10;
+  background:var(--app-surface); border-bottom:1px solid var(--app-line);
+  padding:12px clamp(12px,3vw,28px);
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+}
+.chrome h1{
+  margin:0; font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; font-weight:700; letter-spacing:-.01em; white-space:nowrap;
+}
+.chrome h1 span{display:block; font-size:11px; font-weight:500; color:var(--app-ink-2); letter-spacing:.02em}
+.tabs{display:flex; gap:6px; flex-wrap:wrap}
+.tab{
+  font:600 13px/1 "IBM Plex Sans",Arial,sans-serif; color:var(--app-ink-2);
+  background:transparent; border:1px solid var(--app-line); border-radius:999px;
+  padding:8px 14px; cursor:pointer;
+}
+.tab:hover{color:var(--app-ink)}
+.tab[aria-selected="true"]{background:var(--go); border-color:var(--go); color:#fff}
+.tab:focus-visible,.btn:focus-visible,.seg button:focus-visible{outline:2px solid var(--go); outline-offset:2px}
+.spacer{margin-left:auto}
+.seg{display:inline-flex; border:1px solid var(--app-line); border-radius:8px; overflow:hidden}
+.seg button{
+  font:600 12px/1 "IBM Plex Mono",monospace; padding:8px 11px;
+  background:transparent; color:var(--app-ink-2); border:0; cursor:pointer;
+}
+.seg button[aria-pressed="true"]{background:var(--app-ink); color:var(--app-surface)}
+.btn{
+  font:600 13px/1 "IBM Plex Sans",Arial,sans-serif; padding:9px 15px;
+  border-radius:8px; border:1px solid var(--app-line); background:transparent;
+  color:var(--app-ink); cursor:pointer;
+}
+.btn.primary{background:var(--go); border-color:var(--go); color:#fff}
+.btn:hover{border-color:var(--app-ink-2)}
+.btn.primary:hover{background:#095a30}
+.hint{
+  padding:9px clamp(12px,3vw,28px); font-size:12px; color:var(--app-ink-2);
+  background:var(--app-surface); border-bottom:1px solid var(--app-line);
+}
+
+/* ------------------------------------------------------------------- paper */
+.stack{padding:22px clamp(8px,3vw,28px) 60px; display:flex; flex-direction:column; align-items:center; gap:22px}
+.sheet{
+  width:216mm; max-width:100%; min-height:279mm;
+  background:var(--paper); color:var(--ink);
+  padding:13mm 13mm 11mm;
+  box-shadow:0 1px 2px rgba(0,0,0,.10), 0 10px 30px rgba(0,0,0,.12);
+  display:none; flex-direction:column;
+  font-size:10.4pt; line-height:1.34;
+}
+.sheet.active{height:279mm}
+.sheet.active{display:flex}
+
+/* masthead ---------------------------------------------------------------- */
+.mast{display:flex; align-items:flex-start; gap:14px; border-bottom:2.5px solid var(--ink); padding-bottom:7px}
+.mast-l{min-width:0}
+.eyebrow{
+  font:600 8.2pt/1 "IBM Plex Mono",monospace; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3);
+}
+.mast h2{
+  margin:3px 0 0; font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-size:27pt; font-weight:700; line-height:.95; letter-spacing:-.02em;
+}
+.mast-r{margin-left:auto; text-align:right; display:flex; flex-direction:column; gap:4px; align-items:flex-end}
+.badges{display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end}
+.badge{
+  font:600 8pt/1 "IBM Plex Mono",monospace; letter-spacing:.06em;
+  border:1px solid var(--ink); padding:3.5px 6px; border-radius:2px;
+}
+.kit{font:500 8.4pt/1.3 "IBM Plex Mono",monospace; color:var(--ink-2); max-width:62mm}
+
+/* blocks ------------------------------------------------------------------ */
+.block{margin-top:9px}
+.block-h{display:flex; align-items:baseline; gap:9px; padding-bottom:5px}
+.block-h .num{
+  font-family:Archivo,sans-serif; font-size:15pt; font-weight:700; line-height:1;
+  width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+  font-size:10.5pt; color:#fff; flex:none;
+}
+.block-h h3{
+  margin:0; font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-size:13.5pt; font-weight:700; letter-spacing:-.01em; line-height:1;
+}
+.block-h .when{font:500 9pt/1 "IBM Plex Sans",Arial,sans-serif; color:var(--ink-2); margin-left:auto; text-align:right}
+
+.go .num{background:var(--go)} .go h3{color:var(--go)}
+.go .block-h{border-bottom:1.5px solid var(--go)}
+.fb .num{background:var(--fallback)} .fb h3{color:var(--fallback)}
+.fb .block-h{border-bottom:1.5px solid var(--fallback)}
+
+.applies{
+  margin-top:6px; padding:5px 9px; border-left:3px solid var(--go); background:#f1f6f3;
+  font-size:9.4pt; line-height:1.35;
+}
+.cols{columns:2; column-gap:8mm; column-rule:1px solid var(--rule-2); margin-top:6px}
+.step{break-inside:avoid; display:flex; gap:6px; padding:2.6px 0}
+.step .n{
+  font:600 8.4pt/1.55 "IBM Plex Mono",monospace; color:var(--ink-3);
+  min-width:13px; flex:none; font-variant-numeric:tabular-nums;
+}
+.step p{margin:0}
+
+/* the two or three things that actually cost money if you get them wrong */
+.trap{
+  break-inside:avoid; margin:5px 0 2px; padding:5px 8px 5px 9px;
+  border-left:3px solid var(--stop); background:#fbf3f3;
+}
+.trap b{color:var(--stop); font-weight:600}
+.trap .lbl{
+  font:600 7.8pt/1 "IBM Plex Mono",monospace; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--stop); display:block; margin-bottom:2.5px;
+}
+
+.manual-split{display:grid; grid-template-columns:1fr 1fr; gap:0 8mm; margin-top:6px}
+.manual-split > div{min-width:0}
+.mh{
+  font:600 9pt/1.2 "IBM Plex Sans",Arial,sans-serif; color:var(--ink);
+  border-bottom:1px solid var(--rule); padding-bottom:3px; margin-bottom:4px;
+}
+.mh em{font-style:normal; color:var(--ink-3); font-weight:500; font-family:"IBM Plex Mono",monospace; font-size:8pt}
+
+.after{
+  break-inside:avoid; margin-top:7px; padding:7px 9px;
+  background:var(--band); border-left:3px solid var(--ink-2);
+}
+.after .lbl{
+  font:600 7.8pt/1 "IBM Plex Mono",monospace; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-2); display:block; margin-bottom:3px;
+}
+.after .step .n{color:var(--ink-2)}
+
+.none{
+  margin-top:6px; padding:8px 10px; border:1px dashed var(--rule);
+  color:var(--ink-2); font-size:9.6pt;
+}
+.none b{color:var(--ink)}
+
+/* every-refund rules, identical on all five sheets on purpose --------------- */
+.rules{margin-top:auto; padding-top:8px; border-top:2.5px solid var(--ink)}
+.rules-h{
+  font:600 8.2pt/1 "IBM Plex Mono",monospace; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:5px;
+}
+.rules ol{margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(4,1fr); gap:0 6mm}
+.rules li{font-size:9.1pt; line-height:1.3; padding-left:13px; position:relative}
+.rules li::before{
+  content:counter(r); counter-increment:r; position:absolute; left:0; top:0;
+  font:600 8pt/1.45 "IBM Plex Mono",monospace; color:var(--ink-3);
+}
+.rules ol{counter-reset:r}
+.foot{
+  display:flex; gap:10px; align-items:baseline; margin-top:7px;
+  font:500 7.8pt/1.3 "IBM Plex Mono",monospace; color:var(--ink-3);
+}
+.foot .r{margin-left:auto}
+
+/* the quoted on-screen labels — the single most-used device on the page */
+.ui{
+  font-family:"IBM Plex Mono",monospace; font-size:.92em; font-weight:500;
+  background:var(--band); border:1px solid var(--rule-2); border-radius:3px;
+  padding:.5px 3.5px; white-space:nowrap;
+}
+strong{font-weight:600}
+
+/* ------------------------------------------------------------------- print */
+@page{size:letter portrait; margin:11mm}
+@media print{
+  :root{--app-bg:#fff}
+  body{background:#fff}
+  .chrome,.hint{display:none !important}
+  .stack{padding:0; gap:0; display:block}
+  .sheet{
+    display:flex !important; width:auto; min-height:0; max-width:none;
+    padding:0; box-shadow:none; break-after:page; page-break-after:always;
+  }
+  .sheet:last-of-type{break-after:auto; page-break-after:auto}
+  .sheet.active{height:auto}
+  body.print-one .sheet:not(.active){display:none !important}
+  body.print-one .sheet.active{break-after:auto; page-break-after:auto}
+  .applies{background:#f1f6f3 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .trap{background:#f6efef !important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .after,.ui{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .block-h .num{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+</style>
+</head>
+<body>
+
+<header class="chrome">
+  <h1>Refund cheat sheets<span id="brand-sub">FUNHUB · one page per system</span></h1>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="spacer"></div>
+  <div class="seg" role="group" aria-label="Language">
+    <button id="lang-en" aria-pressed="true">EN</button>
+    <button id="lang-fr" aria-pressed="false">FR</button>
+  </div>
+  <button class="btn primary" id="print-one">Save as PDF</button>
+  <button class="btn" id="print-all">Print all 5</button>
+</header>
+<p class="hint" id="hint"></p>
+
+<main class="stack" id="stack"></main>
+
+<script>
+/* Content lives here rather than in the markup so the two languages stay in
+   step: every line has an EN and an FR, and nothing can drift. */
+var UI = {
+  en: { sub:"FUNHUB · one page per system", integrated:"Refund from the POS", manual:"Manual refund",
+        whenInt:"Always try this first", whenMan:"Only when the POS refund fails",
+        rules:"Every refund, every time", after:"Then record it in Midori",
+        trap:"Get this wrong and it costs money", saveOne:"Save as PDF", printAll:"Print all 5",
+        hint:"Pick a system, then Save as PDF — choose “Save as PDF” as the destination in the print dialog. Print all 5 gives you one page per system.",
+        cycle:"Refund procedure", foot:"FUNHUB Terminal Certification", rev:"Rev. 2026-H2",
+        noman:"No written manual procedure yet.", terminals:"Terminals" },
+  fr: { sub:"FUNHUB · une page par système", integrated:"Remboursement depuis le PDV", manual:"Remboursement manuel",
+        whenInt:"Toujours essayer ceci en premier", whenMan:"Seulement si le PDV ne passe pas",
+        rules:"Chaque remboursement, sans exception", after:"Ensuite, enregistrez-le dans Midori",
+        trap:"Une erreur ici coûte de l'argent", saveOne:"Enregistrer en PDF", printAll:"Imprimer les 5",
+        hint:"Choisissez un système, puis Enregistrer en PDF — sélectionnez « Enregistrer en PDF » comme destination dans la fenêtre d'impression. Imprimer les 5 donne une page par système.",
+        cycle:"Procédure de remboursement", foot:"Certification des terminaux FUNHUB", rev:"Rév. 2026-H2",
+        noman:"Aucune procédure manuelle écrite pour l'instant.", terminals:"Terminaux" }
+};
+
+var MONERIS = {
+  name:{ en:"Moneris Go / Go Plus", fr:"Moneris Go / Go Plus" },
+  steps:{
+    en:[ "Wake the terminal, **swipe left to right**, press [[Quitter]].",
+         "At [[Sign in]], clear [[Username]], type your own. No password here.",
+         "**Three-dot menu, top right** → [[Remboursement]]. Not the hamburger on the left.",
+         "Enter your password. This is the only password gate.",
+         "**Key the tax-included total**, read off the customer's receipt.",
+         "Green check → hand over the terminal → customer presents the card." ],
+    fr:[ "Réveillez le terminal, **glissez de gauche à droite**, appuyez sur [[Quitter]].",
+         "À [[Sign in]], effacez [[Username]] et tapez le vôtre. Aucun mot de passe ici.",
+         "**Menu trois points, en haut à droite** → [[Remboursement]]. Pas le menu de gauche.",
+         "Entrez votre mot de passe. C'est la seule barrière.",
+         "**Tapez le total taxes incluses**, lu sur le reçu du client.",
+         "Crochet vert → remettez le terminal → le client présente sa carte." ] },
+  trap:{ en:"The amount is keyed blind — nothing is pulled from the original sale. Enter the **total with tax**.",
+         fr:"Le montant est saisi à l'aveugle — rien n'est repris de la vente. Entrez le **total taxes incluses**." }
+};
+
+var CLOVER = {
+  name:{ en:"Clover Flex / Mini", fr:"Clover Flex / Mini" },
+  steps:{
+    en:[ "**Four fingers in the four corners** of the screen at once.",
+         "Type your manager PIN.",
+         "Open the [[Remboursement / Refund]] app.",
+         "**Key the amount BEFORE tax.**",
+         "[[Effectuer un remboursement]] → customer taps the card.",
+         "Reopen [[Clover Cloud Display]] when you are done." ],
+    fr:[ "**Quatre doigts dans les quatre coins** de l'écran en même temps.",
+         "Tapez votre NIP de gestionnaire.",
+         "Ouvrez l'application [[Remboursement / Refund]].",
+         "**Tapez le montant AVANT taxes.**",
+         "[[Effectuer un remboursement]] → le client présente sa carte.",
+         "Rouvrez [[Clover Cloud Display]] quand c'est terminé." ] },
+  trap:{ en:"Clover is the **only** terminal that wants the amount **before tax** — it adds the tax itself. Key the total with tax and you refund too much.",
+         fr:"Clover est le **seul** terminal qui veut le montant **avant taxes** — il ajoute les taxes lui-même. Le total taxes incluses rembourse trop." }
+};
+
+var SHEETS = [
+  { id:"midori", pos:"Midori", stores:["03","07","11"],
+    kit:{ en:"Clover Flex · Clover Mini (03)\nMoneris Go (07 · 11)", fr:"Clover Flex · Clover Mini (03)\nMoneris Go (07 · 11)" },
+    int:{ en:[ "Open the sale and **scroll the drawer to the bottom**.",
+               "Click the red [[Refund]] button.",
+               "Tick the original transaction under [[Transactions]], then [[Details]].",
+               "Fill [[Reason]] — it is required.",
+               "Choose the terminal in [[Payment terminal]].",
+               "[[Send request to charge]], then your **5-digit Midori code**.",
+               "Customer presents the card. Receipt prints." ],
+          fr:[ "Ouvrez la vente et **faites défiler le panneau jusqu'en bas**.",
+               "Cliquez le bouton rouge [[Refund]].",
+               "Cochez la transaction d'origine sous [[Transactions]], puis [[Details]].",
+               "Remplissez [[Reason]] — obligatoire.",
+               "Choisissez le terminal dans [[Payment terminal]].",
+               "[[Send request to charge]], puis votre **code Midori à 5 chiffres**.",
+               "Le client présente sa carte. Le reçu s'imprime." ] },
+    manuals:[ { store:"03", proc:CLOVER }, { store:"07 · 11", proc:MONERIS } ],
+    after:{ en:[ "Reopen the sale in Midori and press [[Refund]].",
+                 "Check the amount matches what the terminal refunded.",
+                 "In the note: **manual refund on the terminal** + the refund receipt number.",
+                 "Press [[Refund]] to save." ],
+            fr:[ "Rouvrez la vente dans Midori et appuyez sur [[Refund]].",
+                 "Vérifiez que le montant correspond à celui du terminal.",
+                 "Dans la note : **remboursement manuel sur le terminal** + le numéro du reçu.",
+                 "Appuyez sur [[Refund]] pour enregistrer." ] },
+    afterNote:{ en:"A manual refund is invisible to Midori until you do this. The sale keeps showing as paid.",
+                fr:"Un remboursement manuel reste invisible dans Midori tant que ceci n'est pas fait. La vente reste affichée comme payée." } },
+
+  { id:"cluster", pos:"Cluster", stores:["07"],
+    kit:{ en:"Moneris Go Plus", fr:"Moneris Go Plus" },
+    int:{ en:[ "**Type YOUR manager PIN** before anything else.",
+               "Take the **receipt number** off the customer's receipt.",
+               "[[Search Receipt]] → key it into [[Receipt #]] → green [[Continue]].",
+               "Check card brand, last 4 and auth against the receipt.",
+               "Bottom toolbar → [[Delete Receipt]].",
+               "Pick the **real** [[Reason of cancellation]]. [[Training Mode]] is for tests only.",
+               "Green check → type the [[Client Name]] → [[Full Refund]].",
+               "Tap [[CARD]]. Customer presents the card again. Receipt prints." ],
+          fr:[ "**Tapez VOTRE NIP de gestionnaire** avant toute chose.",
+               "Prenez le **numéro de reçu** sur le reçu du client.",
+               "[[Search Receipt]] → tapez-le dans [[Receipt #]] → [[Continue]] vert.",
+               "Vérifiez la marque, les 4 derniers chiffres et l'autorisation.",
+               "Barre du bas → [[Delete Receipt]].",
+               "Choisissez la **vraie** [[Reason of cancellation]]. [[Training Mode]] = tests seulement.",
+               "Crochet vert → tapez le [[Client Name]] → [[Full Refund]].",
+               "Touchez [[CARD]]. Le client représente sa carte. Le reçu s'imprime." ] },
+    trap:{ en:"The refund runs through **[[Delete Receipt]]**, never through [[Edit payment]].",
+           fr:"Le remboursement passe par **[[Delete Receipt]]**, jamais par [[Edit payment]]." },
+    manuals:[ { store:"", proc:MONERIS } ] },
+
+  { id:"myr", pos:"MYR", stores:["03","11"],
+    kit:{ en:"Moneris Go Plus", fr:"Moneris Go Plus" },
+    int:{ en:[ "[[Completed]] tab → **tap the order**.",
+               "Click [[Refund]].",
+               "Enter the manager [[PIN Code]] → green check → [[Continue]].",
+               "Check the lines. **Green means included.** [[X]] removes one, [[Edit]] changes an amount.",
+               "Confirm [[AMOUNT PAID]] and [[AMOUNT REFUNDED]].",
+               "Type the **customer name** — and the reason, in the same field.",
+               "Customer taps the card, then choose [[Imprimer]]. Keep the receipt." ],
+          fr:[ "Onglet [[Completed]] → **touchez la commande**.",
+               "Cliquez [[Refund]].",
+               "Entrez le [[PIN Code]] de gestionnaire → crochet vert → [[Continue]].",
+               "Vérifiez les lignes. **Vert = incluse.** [[X]] en retire une, [[Edit]] change un montant.",
+               "Vérifiez [[AMOUNT PAID]] et [[AMOUNT REFUNDED]].",
+               "Tapez le **nom du client** — et la raison, dans le même champ.",
+               "Le client représente sa carte, puis choisissez [[Imprimer]]. Gardez le reçu." ] },
+    trap:{ en:"There is **no note field**. The reason for the refund goes in the customer name field or it is not recorded anywhere.",
+           fr:"Il n'y a **aucun champ de note**. La raison va dans le champ du nom du client, sinon elle n'est écrite nulle part." },
+    manuals:[ { store:"", proc:MONERIS } ] },
+
+  { id:"embed", pos:"Embed", stores:["07","11","HO"],
+    applies:{ en:"Covers **POS and kiosk** sales. A kiosk sale is refunded here, not on the kiosk.",
+              fr:"Couvre les ventes **PDV et bornes**. Une vente de borne se rembourse ici, pas sur la borne." },
+    kit:{ en:"Windcave LANE3600 (07 · 11)\nWindcave CHU200S (HO)", fr:"Windcave LANE3600 (07 · 11)\nWindcave CHU200S (HO)" },
+    int:{ en:[ "Functions → [[TRANSACTION HISTORY / CARD TRANSFER]].",
+               "**Tap the customer's arcade card** on the reader.",
+               "[[HISTORY]] → [[SALES]] → find the sale.",
+               "Open it and **write down the [[RECEIPT NO]]** (bottom right).",
+               "Back to [[Functions]] → [[Void]] → search that receipt number.",
+               "[[VOID]] → [[VOID ALL]].",
+               "Pick a reason ([[Testing/Training]] for a test) → [[NEXT]].",
+               "Customer taps the card. Receipt prints." ],
+          fr:[ "Functions → [[TRANSACTION HISTORY / CARD TRANSFER]].",
+               "**Faites passer la carte d'arcade du client** sur le lecteur.",
+               "[[HISTORY]] → [[SALES]] → trouvez la vente.",
+               "Ouvrez-la et **notez le [[RECEIPT NO]]** (en bas à droite).",
+               "Retour à [[Functions]] → [[Void]] → cherchez ce numéro de reçu.",
+               "[[VOID]] → [[VOID ALL]].",
+               "Choisissez une raison ([[Testing/Training]] pour un test) → [[NEXT]].",
+               "Le client présente sa carte. Le reçu s'imprime." ] },
+    trap:{ en:"Write the receipt number down at step 4. Once you leave that screen there is **no way to search for it**, and the void cannot be done.",
+           fr:"Notez le numéro de reçu à l'étape 4. Une fois l'écran quitté, **impossible de le retrouver**, et l'annulation ne peut plus se faire." },
+    manuals:[],
+    manualMissing:{ en:"The manual backup for Windcave pin pads is **not written up yet**. If the void will not go through, stop and call head office — do not improvise on the terminal.",
+                    fr:"La procédure manuelle pour les NIP pads Windcave **n'est pas encore rédigée**. Si l'annulation ne passe pas, arrêtez et appelez le siège social — n'improvisez pas sur le terminal." } },
+
+  { id:"intercard", pos:"Intercard", stores:["03"],
+    applies:{ en:"Covers **POS and teller** sales. A teller sale is refunded here, not on the teller terminal.",
+              fr:"Couvre les ventes **PDV et guichet**. Une vente au guichet se rembourse ici, pas sur le terminal du guichet." },
+    kit:{ en:"Moneris P400", fr:"Moneris P400" },
+    int:{ en:[ "Be **logged in as yourself**. If not, [[Log Out]] and sign back in.",
+               "[[Functions]] (bottom left) → [[Admin]] tab → gold [[Refunds]].",
+               "Choose [[Credit Card Refund]] — not [[Cash Refund]].",
+               "**Key the amount** off the customer's receipt. Check it twice.",
+               "Pick a [[Reason Code]] ([[Other]] for a certification test).",
+               "Write what happened in [[Notes]].",
+               "Gold [[Refunds]] sends it to the terminal.",
+               "Customer presents **the same card** on the P400. Receipt prints." ],
+          fr:[ "Soyez **connecté sous votre propre nom**. Sinon, [[Log Out]] et reconnectez-vous.",
+               "[[Functions]] (en bas à gauche) → onglet [[Admin]] → [[Refunds]] doré.",
+               "Choisissez [[Credit Card Refund]] — pas [[Cash Refund]].",
+               "**Tapez le montant** lu sur le reçu du client. Vérifiez deux fois.",
+               "Choisissez un [[Reason Code]] ([[Other]] pour un test de certification).",
+               "Écrivez ce qui s'est passé dans [[Notes]].",
+               "[[Refunds]] doré l'envoie au terminal.",
+               "Le client présente **la même carte** sur le P400. Le reçu s'imprime." ] },
+    trap:{ en:"Intercard is a hybrid: the POS drives the terminal, but **you key the amount yourself**. Nothing is pulled from the original sale.",
+           fr:"Intercard est hybride : le PDV pilote le terminal, mais **vous tapez le montant vous-même**. Rien n'est repris de la vente." },
+    manuals:[],
+    manualMissing:{ en:"There is **no separate manual procedure** on these terminals. The steps above already are the hand-keyed refund.",
+                    fr:"Il n'y a **aucune procédure manuelle distincte** sur ces terminaux. Les étapes ci-dessus sont déjà le remboursement saisi à la main." } }
+];
+
+var RULES = {
+  en:[ "Refund to the **same card** the customer paid with. Never another card, never cash.",
+       "Print the receipt. The customer **signs the merchant copy**.",
+       "Signed merchant copy goes in the **nightly deposit**.",
+       "The customer keeps **their own copy**." ],
+  fr:[ "Remboursez sur la **même carte** que le paiement. Jamais une autre, jamais comptant.",
+       "Imprimez le reçu. Le client **signe la copie marchand**.",
+       "La copie marchand signée va au **dépôt de fin de journée**.",
+       "Le client garde **sa propre copie**." ]
+};
+
+/* ------------------------------------------------------------------ render */
+var lang = "en", current = SHEETS[0].id;
+
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmt(s){
+  return esc(s)
+    .replace(/\[\[(.+?)\]\]/g, '<span class="ui">$1</span>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+function t(k){ return UI[lang][k]; }
+function steps(list){
+  return list.map(function(s,i){
+    return '<div class="step"><span class="n">' + (i+1) + '</span><p>' + fmt(s) + '</p></div>';
+  }).join("");
+}
+function trap(txt){
+  return '<div class="trap"><span class="lbl">' + esc(t("trap")) + '</span>' + fmt(txt) + '</div>';
+}
+
+function sheetHtml(S){
+  var h = '<section class="sheet' + (S.id === current ? " active" : "") + '" id="sheet-' + S.id + '">';
+
+  h += '<div class="mast"><div class="mast-l">'
+     + '<div class="eyebrow">' + esc(t("cycle")) + '</div>'
+     + '<h2>' + esc(S.pos) + '</h2></div>'
+     + '<div class="mast-r"><div class="badges">'
+     + S.stores.map(function(c){ return '<span class="badge">' + esc(c) + '</span>'; }).join("")
+     + '</div><div class="kit">' + esc(S.kit[lang]).replace(/\n/g,"<br>") + '</div></div></div>';
+
+  h += '<div class="block go"><div class="block-h"><span class="num">1</span>'
+     + '<h3>' + esc(t("integrated")) + '</h3>'
+     + '<span class="when">' + esc(t("whenInt")) + '</span></div>'
+     + (S.applies ? '<div class="applies">' + fmt(S.applies[lang]) + '</div>' : '')
+     + '<div class="cols">' + steps(S.int[lang]) + '</div>'
+     + (S.trap ? trap(S.trap[lang]) : "") + '</div>';
+
+  h += '<div class="block fb"><div class="block-h"><span class="num">2</span>'
+     + '<h3>' + esc(t("manual")) + '</h3>'
+     + '<span class="when">' + esc(t("whenMan")) + '</span></div>';
+
+  if (S.manuals && S.manuals.length) {
+    if (S.manuals.length > 1) {
+      h += '<div class="manual-split">' + S.manuals.map(function(m){
+        return '<div><div class="mh">' + esc(m.proc.name[lang])
+             + (m.store ? ' <em>' + esc(m.store) + '</em>' : '') + '</div>'
+             + steps(m.proc.steps[lang]) + trap(m.proc.trap[lang]) + '</div>';
+      }).join("") + '</div>';
+    } else {
+      var m = S.manuals[0];
+      h += '<div class="mh">' + esc(m.proc.name[lang]) + '</div>'
+         + '<div class="cols">' + steps(m.proc.steps[lang]) + '</div>'
+         + trap(m.proc.trap[lang]);
+    }
+  } else {
+    h += '<div class="none">' + fmt(S.manualMissing[lang]) + '</div>';
+  }
+
+  if (S.after) {
+    h += '<div class="after"><span class="lbl">' + esc(t("after")) + '</span>'
+       + '<p style="margin:0 0 4px;color:var(--ink-2)">' + esc(S.afterNote[lang]) + '</p>'
+       + '<div class="cols">' + steps(S.after[lang]) + '</div></div>';
+  }
+  h += '</div>';
+
+  h += '<div class="rules"><div class="rules-h">' + esc(t("rules")) + '</div><ol>'
+     + RULES[lang].map(function(r){ return '<li>' + fmt(r) + '</li>'; }).join("")
+     + '</ol><div class="foot"><span>' + esc(t("foot")) + '</span>'
+     + '<span class="r">' + esc(S.pos) + ' · ' + esc(t("rev")) + '</span></div></div>';
+
+  return h + '</section>';
+}
+
+/* Each sheet carries a different amount of copy, and a half-empty page reads as
+   unfinished rather than generous. Grow the type until the sheet is nearly full,
+   capped so nothing ever spills onto a second page. */
+function fit(){
+  var pad = 24 * 3.7795;                       /* 13mm + 11mm padding, in px */
+  SHEETS.forEach(function(S){
+    var el = document.getElementById("sheet-" + S.id);
+    if(!el) return;
+    var box = el.getBoundingClientRect().height || (279 * 3.7795);
+    var room = box - pad;
+    var best = 10.4;
+    for(var size = 13.4; size >= 10.4; size -= 0.2){
+      el.style.fontSize = size + "pt";
+      if(el.scrollHeight - pad <= room * 0.985){ best = size; break; }
+    }
+    el.style.fontSize = best + "pt";
+  });
+}
+
+function render(){
+  document.documentElement.lang = lang;
+  document.getElementById("brand-sub").textContent = t("sub");
+  document.getElementById("hint").textContent = t("hint");
+  document.getElementById("print-one").textContent = t("saveOne");
+  document.getElementById("print-all").textContent = t("printAll");
+  document.getElementById("lang-en").setAttribute("aria-pressed", lang === "en");
+  document.getElementById("lang-fr").setAttribute("aria-pressed", lang === "fr");
+
+  document.getElementById("tabs").innerHTML = SHEETS.map(function(S){
+    return '<button class="tab" role="tab" data-id="' + S.id + '" aria-selected="'
+         + (S.id === current) + '">' + esc(S.pos) + '</button>';
+  }).join("");
+
+  document.getElementById("stack").innerHTML = SHEETS.map(sheetHtml).join("");
+
+  /* measure with every sheet laid out, then hide the ones not selected */
+  var stack = document.getElementById("stack");
+  stack.querySelectorAll(".sheet").forEach(function(el){ el.classList.add("active"); });
+  fit();
+  stack.querySelectorAll(".sheet").forEach(function(el){
+    if(el.id !== "sheet-" + current) el.classList.remove("active");
+  });
+}
+
+document.addEventListener("click", function(ev){
+  var tab = ev.target.closest(".tab");
+  if (tab) { current = tab.getAttribute("data-id"); render(); window.scrollTo(0, 0); return; }
+  if (ev.target.id === "lang-en") { lang = "en"; render(); return; }
+  if (ev.target.id === "lang-fr") { lang = "fr"; render(); return; }
+  if (ev.target.id === "print-one") {
+    document.body.classList.add("print-one");
+    window.print();
+    setTimeout(function(){ document.body.classList.remove("print-one"); }, 0);
+    return;
+  }
+  if (ev.target.id === "print-all") { document.body.classList.remove("print-one"); window.print(); return; }
+});
+window.addEventListener("afterprint", function(){ document.body.classList.remove("print-one"); });
+
+render();
+</script>
+
+</body>
+</html>

@@ -132,9 +132,12 @@ function tailBlock(pos){
 }
 function procBlock(pr){
   var steps = (pr[ui.lang] || pr.en).slice(), pk = procKeyOf(pr);
+  var applies = ui.lang==="fr" ? pr.applies_fr : pr.applies_en;
   var h = '<div class="proc"><div class="proc-h"><span class="eyebrow">'+esc(t("stepByStep"))+'</span>'
         + (PROC_VIDEO.hasOwnProperty(pk) ? '<a class="vidlink" href="'+videoHref(pk)+'" target="_blank" rel="noopener">▶ '+esc(t("watchVideo"))+'</a>' : '')
-        + '</div><ol class="proc-steps">';
+        + '</div>'
+        + (applies ? '<div class="proc-applies">'+fmt(applies)+'</div>' : '')
+        + '<ol class="proc-steps">';
   for(var i=0;i<steps.length;i++){
     var img = STEP_IMG[pk+"|"+(i+1)];
     h += '<li>'+fmt(steps[i])
@@ -382,8 +385,6 @@ function deviceCard(d){
 
   if(open){
     h += '<div class="dev-body">';
-    if(d.tests.indexOf("DEBIT-REF")<0 && d.tests.indexOf("INT-REF")<0)
-      h += '<div class="flagnote">'+esc(t("noRefundHere"))+'</div>';
     if(d.flag==="MID-CHECK") h += '<div class="flagnote">'+(ui.lang==="fr"
       ? "Le MID inscrit est un MID Moneris alors que le terminal est un Windcave. À vérifier avant de certifier."
       : "The MID on file is a Moneris MID but this terminal is a Windcave. Verify before certifying.")+'</div>';
@@ -447,8 +448,6 @@ function simpleDeviceCard(d){
     + '<span class="sdev-caret">'+(open?"▾":"▸")+'</span></button>';
   if(open){
     h += '<div class="sdev-body">';
-    if(d.tests.indexOf("DEBIT-REF")<0 && d.tests.indexOf("INT-REF")<0)
-      h += '<div class="flagnote">'+esc(t("noRefundHere"))+'</div>';
     for(i=0;i<d.tests.length;i++){
       var code = d.tests[i], r = res(d.id, code), isOpen = ui.openTest === key(d.id, code);
       h += '<div class="stest">'
@@ -859,8 +858,7 @@ function testPanel(d, code, simple) {
         + '<input type="file" accept="image/*,application/pdf" capture="environment" ' + pf + ' hidden></label>';
     }
     if (dr.uploadErr) h += '<div class="blockmsg">' + esc(dr.uploadErr) + '</div>';
-    h += '<a class="btn sm ghost proofdrive" href="' + FOLDER + esc(testFolder(d, code)) + '" target="_blank" rel="noopener">' + esc(t("openTestFolder")) + ' ↗</a>'
-      + '</div>';
+    h += '</div>';
   }
 
   if (ui.blocked && Object.keys(e).length) h += '<div class="blockmsg">' + esc(t("blocked")) + '</div>';
