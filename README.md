@@ -64,6 +64,26 @@ which is why all the data already lives in its own `cert` schema inside the
 shared `os-tools` project rather than in app-local tables. Nothing has to be
 migrated when it moves; a funhub-ops module can read the same schema.
 
+## Publishing this repo
+
+1. On GitHub, create a new repo named `funhub-terminal-cert`. Leave it
+   **completely empty** — no README, no .gitignore, no licence. GitHub offers to
+   add them and it is the wrong choice here: the first push then fails with
+   "unrelated histories" because both sides have commits.
+2. Check the remote matches the account you created it under:
+
+       git remote -v
+       git remote set-url origin https://github.com/<you>/funhub-terminal-cert.git
+
+3. Push:
+
+       git push -u origin main
+
+"Repository not found" on push means one of three things, and GitHub returns the
+same message for all of them on purpose: the repo does not exist, it exists under
+a different owner than the remote says, or you are authenticated as someone
+without access to it.
+
 ## Setup
 
     npm install
