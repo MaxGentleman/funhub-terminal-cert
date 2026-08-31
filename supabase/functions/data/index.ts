@@ -1,7 +1,7 @@
 // GET -> everything the signed-in scope may see.
-// Terminals are visible to all scopes (managers can see other stores exist);
-// what a scope may *write* is decided in result/index.ts.
-import { admin } from "../_shared/db.ts";
+// A store code sees its own store and nothing else — not other stores'
+// terminals, not their results. Head office sees everything.
+import { currentCycle, terminals, testFolders, results } from "../_shared/db.ts";
 import { bearer, verify, isAdmin } from "../_shared/session.ts";
 import { json, preflight } from "../_shared/cors.ts";
 
@@ -12,28 +12,27 @@ Deno.serve(async (req) => {
   const scope = await verify(bearer(req));
   if (!scope) return json({ error: "unauthorised" }, 401, origin);
 
-  const db = admin();
-  const [cycleRes, termRes, foldRes] = await Promise.all([
-    db.from("cycles").select("*").eq("is_current", true).maybeSingle(),
-    db.from("terminals").select("*").eq("active", true).order("id"),
-    db.from("terminal_test_folders").select("*"),
-  ]);
-  const bad = cycleRes.error ?? termRes.error ?? foldRes.error;
-  if (bad) { console.error("data load failed", bad.message); return json({ error: "server_error" }, 500, origin); }
+  // null means "no store filter" — head office only.
+  const only = isAdmin(scope) ? null : scope;
 
-  const cycle = cycleRes.data;
-  if (!cycle) return json({ error: "no_current_cycle" }, 409, origin);
+  try {
+    const cycle = await currentCycle();
+    if (!cycle) return json({ error: "no_current_cycle" }, 409, origin);
 
-  // A manager only needs their own store's results; head office needs all.
-  let q = db.from("results").select("*").eq("cycle_id", cycle.id);
-  if (!isAdmin(scope)) q = q.eq("store_code", scope);
-  const { data: results, error: rErr } = await q;
-  if (rErr) { console.error("results load failed", rErr.message); return json({ error: "server_error" }, 500, origin); }
+    const [terms, folderRows, rows] = await Promise.all([
+      terminals(only),
+      testFolders(),
+      results(cycle.id, only),
+    ]);
 
-  const folders: Record<string, Record<string, string>> = {};
-  for (const f of foldRes.data ?? []) {
-    (folders[f.terminal_id] ??= {})[f.test_code] = f.drive_folder_id;
+    const folders: Record<string, Record<string, string>> = {};
+    for (const f of folderRows) {
+      (folders[f.terminal_id] ??= {})[f.test_code] = f.drive_folder_id;
+    }
+
+    return json({ scope, cycle, terminals: terms, folders, results: rows }, 200, origin);
+  } catch (e) {
+    console.error("data load failed", String(e));
+    return json({ error: "server_error" }, 500, origin);
   }
-
-  return json({ scope, cycle, terminals: termRes.data, folders, results }, 200, origin);
 });

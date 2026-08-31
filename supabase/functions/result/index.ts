@@ -2,8 +2,8 @@
 // The gates that make this register worth having live here, not in the browser:
 //   - pass  needs a reference and a proof file that actually exists
 //   - fail  needs a written explanation and a proof file that actually exists
-//   - the timestamp is set by the database, never sent by the client
-import { admin, PROOF_BUCKET } from "../_shared/db.ts";
+//   - the timestamp comes from the database, never from the client
+import { currentCycle, terminalRef, proofs, saveResult, logAudit } from "../_shared/db.ts";
 import { bearer, verify, canWrite } from "../_shared/session.ts";
 import { json, preflight } from "../_shared/cors.ts";
 
@@ -31,54 +31,50 @@ Deno.serve(async (req) => {
   if (outcome === "fail" && !notes)     return json({ error: "notes_required_for_fail" }, 400, origin);
   if (!proofPath) return json({ error: "proof_required" }, 400, origin);
 
-  const db = admin();
-  const { data: term } = await db
-    .from("terminals").select("id, store_code, tests").eq("id", terminalId).maybeSingle();
-  if (!term) return json({ error: "unknown_terminal" }, 404, origin);
-  if (!(term.tests as string[]).includes(testCode)) return json({ error: "test_not_on_terminal" }, 400, origin);
-  if (!canWrite(scope, term.store_code)) return json({ error: "wrong_store" }, 403, origin);
+  try {
+    const term = await terminalRef(terminalId);
+    if (!term) return json({ error: "unknown_terminal" }, 404, origin);
+    if (!term.tests.includes(testCode)) return json({ error: "test_not_on_terminal" }, 400, origin);
+    if (!canWrite(scope, term.store_code)) return json({ error: "wrong_store" }, 403, origin);
 
-  const { data: cycle } = await db.from("cycles").select("id").eq("is_current", true).maybeSingle();
-  if (!cycle) return json({ error: "no_current_cycle" }, 409, origin);
+    const cycle = await currentCycle();
+    if (!cycle) return json({ error: "no_current_cycle" }, 409, origin);
 
-  // The proof claim is checked, not trusted. A tick box in a browser is exactly
-  // what this whole system exists to stop.
-  if (!proofPath.startsWith(`${cycle.id}/${term.store_code}/${terminalId}/${testCode}/`)) {
-    return json({ error: "proof_path_mismatch" }, 400, origin);
+    // The proof claim is checked, not trusted. Ticking a box without doing the
+    // thing is the exact failure this register exists to stop, so "I uploaded
+    // it" is not something a client gets to assert.
+    if (!proofPath.startsWith(`${cycle.id}/${term.store_code}/${terminalId}/${testCode}/`)) {
+      return json({ error: "proof_path_mismatch" }, 400, origin);
+    }
+    const cut = proofPath.lastIndexOf("/");
+    const dir = proofPath.slice(0, cut);
+    const file = proofPath.slice(cut + 1);
+    const { data: listed, error: lErr } = await proofs().list(dir, { search: file });
+    if (lErr) { console.error("storage list failed", lErr.message); return json({ error: "server_error" }, 500, origin); }
+    if (!listed?.some((o) => o.name === file)) return json({ error: "proof_not_uploaded" }, 400, origin);
+
+    const saved = await saveResult({
+      cycle_id: cycle.id,
+      terminal_id: terminalId,
+      test_code: testCode,
+      store_code: term.store_code,
+      result: outcome,
+      tester_name: tester,
+      reference: reference || null,
+      notes: notes || null,
+      proof_path: proofPath,
+      proof_filename: file,
+    });
+
+    await logAudit({
+      cycle_id: cycle.id, terminal_id: terminalId, test_code: testCode,
+      store_code: term.store_code, action: "recorded", result: outcome,
+      actor: tester, detail: outcome === "pass" ? reference : notes,
+    });
+
+    return json({ ok: true, result: saved }, 200, origin);
+  } catch (e) {
+    console.error("save failed", String(e));
+    return json({ error: "server_error" }, 500, origin);
   }
-  const dir = proofPath.slice(0, proofPath.lastIndexOf("/"));
-  const file = proofPath.slice(proofPath.lastIndexOf("/") + 1);
-  const { data: listed, error: lErr } = await db.storage.from(PROOF_BUCKET).list(dir, { search: file });
-  if (lErr) { console.error("storage list failed", lErr.message); return json({ error: "server_error" }, 500, origin); }
-  if (!listed?.some((o) => o.name === file)) return json({ error: "proof_not_uploaded" }, 400, origin);
-
-  const row = {
-    cycle_id: cycle.id,
-    terminal_id: terminalId,
-    test_code: testCode,
-    store_code: term.store_code,
-    result: outcome,
-    tester_name: tester,
-    reference: reference || null,
-    notes: notes || null,
-    proof_path: proofPath,
-    proof_filename: file,
-    // re-testing replaces the result and clears the previous Drive mirror
-    drive_file_id: null,
-    drive_synced_at: null,
-    drive_error: null,
-    recorded_at: new Date().toISOString(),
-  };
-
-  const { data: saved, error } = await db
-    .from("results").upsert(row, { onConflict: "cycle_id,terminal_id,test_code" }).select().single();
-  if (error) { console.error("save failed", error.message); return json({ error: "server_error" }, 500, origin); }
-
-  await db.from("audit_log").insert({
-    cycle_id: cycle.id, terminal_id: terminalId, test_code: testCode,
-    store_code: term.store_code, action: "recorded", result: outcome,
-    actor: tester, detail: outcome === "pass" ? reference : notes,
-  });
-
-  return json({ ok: true, result: saved }, 200, origin);
 });

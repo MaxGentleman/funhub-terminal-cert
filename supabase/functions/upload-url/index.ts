@@ -1,7 +1,7 @@
 // POST { terminal_id, test_code, ext } -> { path, token }
 // Hands back a short-lived signed upload URL so the file goes straight from the
 // phone to Storage. Nothing large passes through the function.
-import { admin, PROOF_BUCKET } from "../_shared/db.ts";
+import { currentCycle, terminalRef, proofs } from "../_shared/db.ts";
 import { bearer, verify, canWrite } from "../_shared/session.ts";
 import { json, preflight } from "../_shared/cors.ts";
 
@@ -23,22 +23,28 @@ Deno.serve(async (req) => {
   if (!terminalId || !testCode) return json({ error: "terminal_and_test_required" }, 400, origin);
   if (!EXT.has(ext)) return json({ error: "unsupported_file_type" }, 400, origin);
 
-  const db = admin();
-  const { data: term, error } = await db
-    .from("terminals").select("id, store_code, tests").eq("id", terminalId).maybeSingle();
-  if (error) { console.error(error.message); return json({ error: "server_error" }, 500, origin); }
-  if (!term) return json({ error: "unknown_terminal" }, 404, origin);
-  if (!(term.tests as string[]).includes(testCode)) return json({ error: "test_not_on_terminal" }, 400, origin);
-  if (!canWrite(scope, term.store_code)) return json({ error: "wrong_store" }, 403, origin);
+  try {
+    const term = await terminalRef(terminalId);
+    if (!term) return json({ error: "unknown_terminal" }, 404, origin);
+    if (!term.tests.includes(testCode)) return json({ error: "test_not_on_terminal" }, 400, origin);
+    if (!canWrite(scope, term.store_code)) return json({ error: "wrong_store" }, 403, origin);
 
-  const { data: cycle } = await db.from("cycles").select("id").eq("is_current", true).maybeSingle();
-  if (!cycle) return json({ error: "no_current_cycle" }, 409, origin);
+    const cycle = await currentCycle();
+    if (!cycle) return json({ error: "no_current_cycle" }, 409, origin);
 
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = `${cycle.id}/${term.store_code}/${terminalId}/${testCode}/${stamp}.${ext}`;
+    // The path is built here, never accepted from the client — it is what
+    // result/ checks the saved proof against.
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const path = `${cycle.id}/${term.store_code}/${terminalId}/${testCode}/${stamp}.${ext}`;
 
-  const { data: signed, error: sErr } = await db.storage.from(PROOF_BUCKET).createSignedUploadUrl(path);
-  if (sErr) { console.error("signed upload url failed", sErr.message); return json({ error: "server_error" }, 500, origin); }
-
-  return json({ path, token: signed.token }, 200, origin);
+    const { data: signed, error } = await proofs().createSignedUploadUrl(path);
+    if (error || !signed) {
+      console.error("signed upload url failed", error?.message);
+      return json({ error: "server_error" }, 500, origin);
+    }
+    return json({ path, token: signed.token }, 200, origin);
+  } catch (e) {
+    console.error("upload-url failed", String(e));
+    return json({ error: "server_error" }, 500, origin);
+  }
 });

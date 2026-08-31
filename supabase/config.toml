@@ -1,0 +1,19 @@
+project_id = "os-tools"
+
+# These functions authenticate with our own HMAC-signed session token, not a
+# Supabase JWT. Leaving verify_jwt on would reject every call before it reaches
+# the code — including auth, which by definition is called without a token.
+[functions.auth]
+verify_jwt = false
+
+[functions.data]
+verify_jwt = false
+
+[functions.upload-url]
+verify_jwt = false
+
+[functions.result]
+verify_jwt = false
+
+[functions.drive-sync]
+verify_jwt = false

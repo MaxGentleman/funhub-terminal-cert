@@ -1,5 +1,5 @@
 // POST { code } -> { token, scope, expires }
-import { admin } from "../_shared/db.ts";
+import { checkAccessCode } from "../_shared/db.ts";
 import { issue } from "../_shared/session.ts";
 import { json, preflight } from "../_shared/cors.ts";
 
@@ -12,17 +12,16 @@ Deno.serve(async (req) => {
   try { code = String((await req.json()).code ?? "").trim(); } catch { /* handled below */ }
   if (!code) return json({ error: "code_required" }, 400, origin);
 
-  // bcrypt compare happens in Postgres; the hash never leaves the database.
-  const { data, error } = await admin().rpc("check_access_code", { p_code: code });
-  if (error) {
-    console.error("check_access_code failed", error.message);
+  let scope: string | null;
+  try {
+    scope = await checkAccessCode(code);
+  } catch (e) {
+    console.error("check_access_code failed", String(e));
     return json({ error: "server_error" }, 500, origin);
   }
-  if (!data) {
-    // Same shape and timing regardless of which part was wrong.
-    return json({ error: "bad_code" }, 401, origin);
-  }
+  // Same shape and message whichever part was wrong.
+  if (!scope) return json({ error: "bad_code" }, 401, origin);
 
-  const { token, expires } = await issue(data as string);
-  return json({ token, scope: data, expires }, 200, origin);
+  const { token, expires } = await issue(scope);
+  return json({ token, scope, expires }, 200, origin);
 });

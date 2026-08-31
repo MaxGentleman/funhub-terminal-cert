@@ -53,6 +53,12 @@ My Drive it would fail: service accounts have no storage quota of their own.)
 
     src/                front end
     supabase/functions/ auth · data · result · upload · drive-sync
+    index.html          the shell
+    src/app.js          the whole app: gate, terminal list, recording, guides
+    src/api.js          the only place that talks to the backend
+    src/config.js       store names, Drive roots, the API base
+    src/data/           i18n, the six tests, the refund guides, step screenshots
+    supabase/functions/ the five Edge Functions
     supabase/migrations/ schema, already applied to os-tools
     docs/               setup notes
 
@@ -90,10 +96,13 @@ without access to it.
     cp .env.example .env      # fill in the anon key
     npm run dev
 
-Server-side secrets (`SUPABASE_SERVICE_ROLE_KEY`, `CERT_SESSION_SECRET`,
-`GOOGLE_SERVICE_ACCOUNT_TERMINAL_CERT_JSON`, `CERT_SYNC_SECRET`,
-`CERT_ALLOWED_ORIGINS`) are set in the Supabase dashboard under
-Edge Functions → Secrets. They never go in this repo or in Vercel.
+Server-side secrets (`CERT_SESSION_SECRET`, `CERT_SYNC_SECRET`,
+`GOOGLE_SERVICE_ACCOUNT_TERMINAL_CERT_JSON`, `CERT_ALLOWED_ORIGINS`) are set in
+the Supabase dashboard under Edge Functions → Secrets. They never go in this
+repo or in Vercel. `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and
+`SUPABASE_DB_URL` are injected by Supabase.
+
+Vercel needs one environment variable: `VITE_SUPABASE_URL`.
 
 ## Edge Functions
 
@@ -132,3 +141,56 @@ Run it on a schedule, or by hand:
 
     supabase functions deploy auth data upload-url result drive-sync \
       --project-ref lbmcstlfubkyooeqkhce
+
+`supabase/config.toml` sets `verify_jwt = false` on all five. That is not a gap:
+these functions authenticate with our own signed session token, and `auth` is by
+definition called without one. Supabase's JWT check would reject every call
+before it reached the code.
+
+### Why the cert schema is not exposed to PostgREST
+
+It is not in the project's exposed schemas, and it should stay that way. The
+functions reach Postgres directly over `SUPABASE_DB_URL`, so no key that speaks
+the public REST API — anon, service, or a future misconfigured client — can even
+name these tables. Adding `cert` to the exposed schemas would work and would
+also throw that away.
+
+## The recording flow
+
+1. The manager picks a terminal and a test.
+2. They choose pass or fail, type their name, and a reference (pass) or what
+   went wrong (fail).
+3. They photograph the signed merchant copy. It uploads immediately, to a path
+   the **server** chose, under `cycle/store/terminal/test/`.
+4. Save posts to `result`, which re-checks that the file is really in the bucket
+   before it writes the row, and stamps the time from the database.
+5. `drive-sync` mirrors the photo into the matching Drive folder, afterwards.
+
+A re-test starts with an empty proof box on purpose. Carrying the previous run's
+photo forward would let someone re-date an old receipt with two taps — the exact
+move this replaced a spreadsheet to prevent. The old result stays on screen as
+context; it just cannot be reused as evidence.
+
+## Not built yet
+
+Deliberately absent rather than half-present, because a button that cannot do
+its job is worse than no button:
+
+- **New cycle.** Six-monthly, head office. Today it is a SQL statement against
+  `cert.cycles`; it needs an endpoint before the next rollover in Feb 2027.
+- **Add a terminal.** New hardware is rare and needs its Drive folders created
+  alongside the row.
+- **Rotating access codes.** `select cert.set_access_code('03', '<new>', 'label')`.
+
+## Verified end to end
+
+Against the live project, with a real photo upload:
+
+- a wrong code is refused; nothing renders before a right one
+- a store code sees its own 10 terminals, not the other 29, and gets no
+  dashboard or audit log
+- a store code cannot get an upload URL for another store's terminal
+- a pass with no reference is refused
+- a result whose proof file was never uploaded is refused
+- a saved result survives a reload
+- a re-test will not accept the previous run's photo
