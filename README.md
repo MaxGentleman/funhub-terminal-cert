@@ -56,6 +56,14 @@ My Drive it would fail: service accounts have no storage quota of their own.)
     supabase/migrations/ schema, already applied to os-tools
     docs/               setup notes
 
+## Where this lives
+
+Repo sits on Max's personal GitHub for now and deploys from there to his Vercel
+account. It is intended to move into `funhub-ca/funhub-ops` as a module later —
+which is why all the data already lives in its own `cert` schema inside the
+shared `os-tools` project rather than in app-local tables. Nothing has to be
+migrated when it moves; a funhub-ops module can read the same schema.
+
 ## Setup
 
     npm install
@@ -63,5 +71,5 @@ My Drive it would fail: service accounts have no storage quota of their own.)
     npm run dev
 
 Server-side secrets (`SUPABASE_SERVICE_ROLE_KEY`, `CERT_SESSION_SECRET`,
-`GOOGLE_SERVICE_ACCOUNT_JSON`) are set in the Supabase dashboard under
+`GOOGLE_SERVICE_ACCOUNT_TERMINAL_CERT_JSON`) are set in the Supabase dashboard under
 Edge Functions → Secrets. They never go in this repo or in Vercel.

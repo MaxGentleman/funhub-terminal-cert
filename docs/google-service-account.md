@@ -44,8 +44,12 @@ Content manager, not Contributor: the job needs to create files and read them ba
 
 Supabase dashboard → project `os-tools` → Edge Functions → Secrets → Add new secret
 
-- Name: `GOOGLE_SERVICE_ACCOUNT_JSON`
+- Name: `GOOGLE_SERVICE_ACCOUNT_TERMINAL_CERT_JSON`
 - Value: the entire contents of the JSON file, pasted as one value
+
+The name is scoped to this app on purpose. `os-tools` is a shared project and
+other jobs may need their own Google identities later; a generic
+`GOOGLE_SERVICE_ACCOUNT_JSON` would be the one somebody overwrites.
 
 ## 7. Check it
 
