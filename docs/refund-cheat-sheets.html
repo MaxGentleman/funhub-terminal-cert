@@ -170,22 +170,49 @@ body{
 .man .step .n{background:var(--fallback)}
 .after .step .n{background:var(--ink-2)}
 .step p{margin:0; align-self:center}
-.shot{grid-column:2; margin-top:5px; position:relative; display:block}
-.shot img{display:block; width:55%; height:auto; border:1px solid var(--rule); background:#fff}
+/* a step can carry more than one picture; they sit side by side when they fit */
+.shots{grid-column:2; margin-top:5px; display:flex; flex-wrap:wrap; gap:4mm; align-items:flex-start}
+.shot{position:relative; min-width:0}
+.shot img{display:block; width:100%; height:auto; border:1px solid var(--rule); background:#fff}
 
 /* editing furniture — none of this prints -------------------------------- */
 .step.drop{outline:2px dashed var(--go); outline-offset:3px; border-radius:4px}
+/* The toolbar sits in a strip reserved inside the picture's own box. Hanging it
+   below meant the pointer left the hover target on its way down and the controls
+   vanished mid-reach; overlaying it meant a narrow picture's toolbar covered its
+   neighbour's. Reserved space solves both, and nothing shifts on hover. */
+.sheet.editing .shot{padding-bottom:30px}
+.sheet.measuring .shot{padding-bottom:0}
 .shot .tools{
-  position:absolute; left:0; top:100%; margin-top:3px; display:none; gap:6px;
+  position:absolute; left:0; right:0; bottom:0; height:26px; display:none; gap:5px;
   align-items:center; background:var(--app-surface); border:1px solid var(--app-line);
-  border-radius:8px; padding:4px 8px; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,.12);
+  border-radius:7px; padding:0 6px; z-index:5;
 }
-.shot:hover .tools, .shot.armed .tools{display:flex}
-.shot .tools input[type=range]{width:96px; accent-color:var(--go)}
-.shot .tools span{font:600 10.5px/1 "IBM Plex Mono",monospace; color:var(--app-ink-2); min-width:34px}
-.shot .tools button{
+.step:hover .tools{display:flex}
+.shot .tools input[type=range]{flex:1; min-width:0; width:auto}
+.pen{
+  display:none; margin-left:6px; border:1px solid var(--app-line); background:var(--app-surface);
+  color:var(--app-ink); border-radius:6px; padding:1px 6px; font-size:11px; cursor:pointer;
+  vertical-align:middle;
+}
+.step:hover .pen{display:inline-block}
+.step textarea{
+  width:100%; min-height:4.2em; font:inherit; line-height:1.4; color:var(--ink);
+  border:1px solid var(--go); border-radius:6px; padding:5px 7px; background:var(--paper);
+  resize:vertical;
+}
+.editrow{display:flex; gap:6px; margin-top:4px}
+.editrow button{
   font:600 11px/1 "IBM Plex Sans",Arial,sans-serif; border:1px solid var(--app-line);
-  background:transparent; color:var(--app-ink); border-radius:6px; padding:4px 7px; cursor:pointer;
+  background:var(--app-surface); color:var(--app-ink); border-radius:6px; padding:5px 9px; cursor:pointer;
+}
+.editrow button.go{background:var(--go); border-color:var(--go); color:#fff}
+.edithint{font:500 10.5px/1.3 "IBM Plex Mono",monospace; color:var(--app-ink-2); align-self:center}
+.shot .tools input[type=range]{accent-color:var(--go)}
+.shot .tools .pct{font:600 10px/1 "IBM Plex Mono",monospace; color:var(--app-ink-2); min-width:30px; text-align:right}
+.shot .tools button{
+  font:600 12px/1 "IBM Plex Sans",Arial,sans-serif; border:1px solid var(--app-line);
+  background:transparent; color:var(--app-ink); border-radius:5px; padding:2px 6px; cursor:pointer; flex:none;
 }
 .slot{
   grid-column:2; margin-top:4px; border:1px dashed var(--rule); border-radius:6px;
@@ -195,7 +222,7 @@ body{
 .step.drop .slot{border-color:var(--go); color:var(--go)}
 /* the empty-step placeholders are editing furniture and never print, so the
    page-fit measurement has to ignore them too */
-.sheet.measuring .slot, .sheet.measuring .tools{display:none !important}
+.sheet.measuring .slot, .sheet.measuring .tools, .sheet.measuring .pen{display:none !important}
 
 .trap{
   break-inside:avoid; margin-top:8px; padding:6px 9px 6px 10px;
@@ -276,7 +303,7 @@ strong{font-weight:600}
 @media print{
   :root{--app-bg:#fff}
   body{background:#fff}
-  .chrome,.rail,.sheetbar,.slot,.tools{display:none !important}
+  .chrome,.rail,.sheetbar,.slot,.tools,.pen,.editrow{display:none !important}
   .shell{display:block; padding:0}
   .sheetwrap{display:block; gap:0}
   .sheet{
@@ -367,6 +394,8 @@ var UI = {
        dz:"Drop your own image here, or click to choose",
        slot:"Drop a screenshot here",
        yours:"Your images", typeSize:"Text size", auto:"Auto", reset:"Reset sheet",
+       slotMore:"Drop another screenshot here", editText:"Edit this step",
+       ok:"Done", cancel:"Cancel", markupHint:"**bold**  [[button name]]",
        fitOk:"Fits on one page", fitOver:"Runs onto a second page",
        size:"Size", remove:"Remove", step:"Step",
        saving:"Saving…", saved:"Saved", saveErr:"Not saved — try again",
@@ -386,6 +415,8 @@ var UI = {
        dz:"Déposez votre image ici, ou cliquez pour choisir",
        slot:"Déposez une capture ici",
        yours:"Vos images", typeSize:"Taille du texte", auto:"Auto", reset:"Réinitialiser",
+       slotMore:"Déposez une autre capture ici", editText:"Modifier cette étape",
+       ok:"Terminé", cancel:"Annuler", markupHint:"**gras**  [[nom du bouton]]",
        fitOk:"Tient sur une page", fitOver:"Déborde sur une 2e page",
        size:"Taille", remove:"Retirer", step:"Étape",
        saving:"Enregistrement…", saved:"Enregistré", saveErr:"Non enregistré — réessayez",
@@ -403,20 +434,18 @@ var MONERIS = {
   name:"Moneris Go / Go Plus",
   steps:{
     en:[ "**Swipe across the screen from left to right**, then press [[Quitter]].",
-         "At [[Sign in]], clear [[Username]] and type your own. **No password is asked here.**",
-         "**Three-dot menu, top right** → [[Remboursement]]. Not the hamburger on the left.",
-         "Enter your password. This is the only password gate.",
-         "**Key the tax-included total**, read off the customer's receipt.",
-         "Green check → hand the terminal over → the customer presents the card." ],
+         "Type in your username.",
+         "**Three-dot menu, top right** → [[Remboursement]].",
+         "Enter your password.",
+         "Enter the **tax-included total** of the customer's receipt.",
+         "Green check → hand the terminal over → the customer **taps or inserts their card** to receive their refund." ],
     fr:[ "**Glissez sur l'écran de gauche à droite**, puis appuyez sur [[Quitter]].",
-         "À [[Sign in]], effacez [[Username]] et tapez le vôtre. **Aucun mot de passe ici.**",
-         "**Menu trois points, en haut à droite** → [[Remboursement]]. Pas celui de gauche.",
-         "Entrez votre mot de passe. C'est la seule barrière.",
-         "**Tapez le total taxes incluses**, lu sur le reçu du client.",
-         "Crochet vert → remettez le terminal → le client présente sa carte." ] },
-  shots:{ 1:"manual:Moneris|MANUAL-REF|1", 5:"manual:Moneris|MANUAL-REF|6" },
-  trap:{ en:"The amount is keyed blind — nothing is pulled from the original sale. Enter the **total with tax**.",
-         fr:"Le montant est saisi à l'aveugle — rien n'est repris de la vente. Entrez le **total taxes incluses**." }
+         "Tapez votre nom d'utilisateur.",
+         "**Menu trois points, en haut à droite** → [[Remboursement]].",
+         "Entrez votre mot de passe.",
+         "Entrez le **total taxes incluses** du reçu du client.",
+         "Crochet vert → remettez le terminal → le client **présente ou insère sa carte** pour recevoir son remboursement." ] },
+  shots:{ 1:"manual:Moneris|MANUAL-REF|1", 5:"manual:Moneris|MANUAL-REF|6" }
 };
 
 var CLOVER = {
@@ -425,49 +454,47 @@ var CLOVER = {
     en:[ "**Put four fingers in the four corners** of the screen at once — a PIN pad appears.",
          "Type your manager PIN.",
          "Open the [[Remboursement / Refund]] app.",
-         "**Key the refund amount BEFORE tax.**",
+         "**Key the refund amount BEFORE tax** — the terminal adds the tax itself.",
          "Press [[Effectuer un remboursement]] → the customer taps the card.",
          "Reopen [[Clover Cloud Display]] so the terminal is ready for the next customer." ],
     fr:[ "**Posez quatre doigts dans les quatre coins** de l'écran — un clavier NIP apparaît.",
          "Tapez votre NIP de gestionnaire.",
          "Ouvrez l'application [[Remboursement / Refund]].",
-         "**Tapez le montant du remboursement AVANT taxes.**",
+         "**Tapez le montant du remboursement AVANT taxes** — le terminal ajoute les taxes lui-même.",
          "Appuyez sur [[Effectuer un remboursement]] → le client présente sa carte.",
          "Rouvrez [[Clover Cloud Display]] pour le prochain client." ] },
-  shots:{ 1:"manual:Clover|MANUAL-REF|1", 4:"manual:Clover|MANUAL-REF|5" },
-  trap:{ en:"Clover is the **only** terminal that wants the amount **before tax** — it adds the tax itself. Key the total with tax and you refund too much.",
-         fr:"Clover est le **seul** terminal qui veut le montant **avant taxes** — il ajoute les taxes lui-même. Le total taxes incluses rembourse trop." }
+  shots:{ 1:"manual:Clover|MANUAL-REF|1", 4:"manual:Clover|MANUAL-REF|5" }
 };
 
 var MIDORI = {
   steps:{
-    en:[ "Open the sale and **scroll the drawer to the bottom**.",
+    en:[ "Open the sale and **scroll to the bottom of the sale**.",
          "Click the red [[Refund]] button.",
          "Tick the original transaction under [[Transactions]], then [[Details]].",
-         "Fill [[Reason]] — it is required.",
+         "Fill a [[Reason]] for the refund.",
          "Choose the terminal in [[Payment terminal]].",
-         "Click [[Send request to charge]], then key your **5-digit Midori code**.",
-         "The customer presents the card. The receipt prints." ],
-    fr:[ "Ouvrez la vente et **défilez jusqu'en bas du panneau**.",
+         "Click [[Send request to charge]], then enter your **5-digit Midori code**.",
+         "The customer **taps or inserts their card** to receive their refund." ],
+    fr:[ "Ouvrez la vente et **défilez jusqu'en bas de la vente**.",
          "Cliquez le bouton rouge [[Refund]].",
          "Cochez la transaction d'origine sous [[Transactions]], puis [[Details]].",
-         "Remplissez [[Reason]] — obligatoire.",
+         "Remplissez une [[Reason]] pour le remboursement.",
          "Choisissez le terminal dans [[Payment terminal]].",
-         "Cliquez [[Send request to charge]], puis votre **code Midori à 5 chiffres**.",
-         "Le client présente sa carte. Le reçu s'imprime." ] },
+         "Cliquez [[Send request to charge]], puis entrez votre **code Midori à 5 chiffres**.",
+         "Le client **présente ou insère sa carte** pour recevoir son remboursement." ] },
   shots:{ 6:"pos:Midori|INT-REF|7" }
 };
 
 var MYR = {
   steps:{
-    en:[ "Switch to the [[Completed]] tab and **tap the order**.",
+    en:[ "Go to the [[Orders]] page → switch to [[Completed]] and **select the order to refund**.",
          "Click [[Refund]] on the completed order.",
          "Enter the manager [[PIN Code]], confirm, then [[Continue]].",
          "Check the lines. **Green means included.** [[X]] removes one, [[Edit]] changes an amount.",
          "Confirm [[AMOUNT PAID]] and [[AMOUNT REFUNDED]] are what you intend.",
          "Type the **customer name** — and the reason for the refund, in the same field.",
          "The customer taps the card, then choose [[Imprimer]]. Keep the receipt." ],
-    fr:[ "Passez à l'onglet [[Completed]] et **touchez la commande**.",
+    fr:[ "Allez à la page [[Orders]] → passez à [[Completed]] et **sélectionnez la commande à rembourser**.",
          "Cliquez [[Refund]] sur la commande complétée.",
          "Entrez le [[PIN Code]] de gestionnaire, confirmez, puis [[Continue]].",
          "Vérifiez les lignes. **Vert = incluse.** [[X]] en retire une, [[Edit]] change un montant.",
@@ -481,25 +508,19 @@ var MYR = {
 
 var CLUSTER = {
   steps:{
-    en:[ "**Type YOUR manager PIN** before anything else.",
-         "Take the **receipt number** off the customer's printed receipt.",
+    en:[ "Note the **receipt number** off the customer's printed receipt.",
          "Open [[Search Receipt]], key it into [[Receipt #]], tap the green [[Continue]].",
-         "Check card brand, last 4 and the auth number against the receipt.",
-         "In the bottom toolbar tap [[Delete Receipt]].",
-         "Pick the **real** [[Reason of cancellation]]. [[Training Mode]] is for tests only.",
-         "Confirm with the green check, type the [[Client Name]], then [[Full Refund]].",
-         "Tap [[CARD]]. The customer presents the card again. The receipt prints." ],
-    fr:[ "**Tapez VOTRE NIP de gestionnaire** avant toute chose.",
-         "Prenez le **numéro de reçu** sur le reçu imprimé du client.",
-         "Ouvrez [[Search Receipt]], tapez-le dans [[Receipt #]], touchez [[Continue]] vert.",
-         "Vérifiez la marque, les 4 derniers chiffres et l'autorisation.",
-         "Dans la barre du bas, touchez [[Delete Receipt]].",
-         "Choisissez la **vraie** [[Reason of cancellation]]. [[Training Mode]] = tests seulement.",
-         "Confirmez avec le crochet vert, tapez le [[Client Name]], puis [[Full Refund]].",
-         "Touchez [[CARD]]. Le client représente sa carte. Le reçu s'imprime." ] },
-  shots:{ 2:"pos:Cluster|INT-REF|2", 3:"pos:Cluster|INT-REF|3" },
-  trap:{ en:"The refund runs through **[[Delete Receipt]]**, never through [[Edit payment]].",
-         fr:"Le remboursement passe par **[[Delete Receipt]]**, jamais par [[Edit payment]]." }
+         "At the center bottom, tap [[Delete Receipt]].",
+         "Pick the **real** [[Reason of cancellation]].",
+         "Confirm by tapping the arrow next to [[0]], type the [[Client Name]], then [[Full Refund]] or [[Partial Refund]] depending on the situation.",
+         "Tap [[CARD]]. The customer **taps or inserts their card** to receive their refund." ],
+    fr:[ "Notez le **numéro de reçu** sur le reçu imprimé du client.",
+         "Ouvrez [[Search Receipt]], tapez-le dans [[Receipt #]], appuyez sur le [[Continue]] vert.",
+         "Au centre en bas, appuyez sur [[Delete Receipt]].",
+         "Choisissez la **vraie** [[Reason of cancellation]].",
+         "Confirmez en appuyant sur la flèche à côté du [[0]], tapez le [[Client Name]], puis [[Full Refund]] ou [[Partial Refund]] selon le cas.",
+         "Appuyez sur [[CARD]]. Le client **présente ou insère sa carte** pour recevoir son remboursement." ] },
+  shots:{ 1:"pos:Cluster|INT-REF|2", 2:"pos:Cluster|INT-REF|3" }
 };
 
 var EMBED = {
@@ -511,22 +532,18 @@ var EMBED = {
          "Open [[HISTORY]], choose [[SALES]] and find the sale.",
          "Click the sale and **write down the [[RECEIPT NO]]** at the bottom right.",
          "Go back to [[Functions]] → [[Void]] and search that receipt number.",
-         "Press [[VOID]], then [[VOID ALL]].",
-         "Select a reason ([[Testing/Training]] for a certification test), then [[NEXT]].",
+         "Press [[VOID ALL]].",
+         "Select a reason, then select [[NEXT]].",
          "The customer taps the card. The receipt prints." ],
     fr:[ "Depuis l'écran de vente, Functions → [[TRANSACTION HISTORY / CARD TRANSFER]].",
          "**Faites passer la carte d'arcade du client** sur le lecteur.",
          "Ouvrez [[HISTORY]], choisissez [[SALES]] et trouvez la vente.",
          "Cliquez la vente et **notez le [[RECEIPT NO]]** en bas à droite.",
          "Retournez dans [[Functions]] → [[Void]] et cherchez ce numéro de reçu.",
-         "Appuyez sur [[VOID]], puis [[VOID ALL]].",
-         "Choisissez une raison ([[Testing/Training]] pour un test), puis [[NEXT]].",
+         "Appuyez sur [[VOID ALL]].",
+         "Choisissez une raison, puis [[NEXT]].",
          "Le client présente sa carte. Le reçu s'imprime." ] },
   shots:{ 4:"pos:Embed|INT-REF|4", 5:"pos:Embed|INT-REF|6" },
-  trap:{ en:"Write the receipt number down at step 4. Once you leave that screen there is **no way to search for it**, and the void cannot be done.",
-         fr:"Notez le numéro de reçu à l'étape 4. Une fois l'écran quitté, **impossible de le retrouver**, et l'annulation ne peut plus se faire." },
-  noManual:{ en:"The manual backup for Windcave pin pads is **not written up yet**. If the void will not go through, stop and call head office — do not improvise on the terminal.",
-             fr:"La procédure manuelle pour les NIP pads Windcave **n'est pas encore rédigée**. Si l'annulation ne passe pas, arrêtez et appelez le siège social — n'improvisez pas sur le terminal." }
 };
 
 var INTERCARD = {
@@ -623,44 +640,70 @@ function sheetState(id){
   if(!STATE.sheets[id].steps) STATE.sheets[id].steps = {};
   return STATE.sheets[id];
 }
-/* An override wins over the built-in default, including an override that says
-   "no picture here" — otherwise a removed image would come straight back. */
-function shotFor(S, n){
+/* An override wins over the built-in default, including an empty one — a
+   removed picture must not come straight back. Older saves stored a single
+   {k,size}; both shapes read the same way. */
+function shotsFor(S, n){
   var ov = (STATE.sheets[S.id] && STATE.sheets[S.id].steps || {})[String(n)];
-  if(ov !== undefined) return (ov && ov.k && img(ov.k)) ? ov : null;
-  var defs = (S.kind === "man" ? S.src.manual.shots : S.src.proc.shots) || {};
-  var k = defs[n];
-  return (k && img(k)) ? { k:k, size:img(k).def } : null;
+  var list;
+  if(ov !== undefined) list = Array.isArray(ov) ? ov : (ov && ov.k ? [ov] : []);
+  else {
+    var defs = (S.kind === "man" ? S.src.manual.shots : S.src.proc.shots) || {};
+    var k = defs[n];
+    list = k ? [{ k:k, size:(img(k) || {}).def }] : [];
+  }
+  return list.filter(function(o){ return o && o.k && img(o.k); });
 }
-function setShot(id, n, val){
+function setShots(id, n, list){
+  sheetState(id).steps[String(n)] = list;
+  dirty = true;
+}
+/* Step wording is editable too, per language, so a correction does not need a
+   round trip through whoever built the page. */
+function stepText(S, kind, n, dflt){
+  var st = STATE.sheets[S.id];
+  var byLang = st && st.text && st.text[lang];
+  var v = byLang && byLang[kind + ":" + n];
+  return (typeof v === "string" && v.length) ? v : dflt;
+}
+function setStepText(id, kind, n, val, dflt){
   var st = sheetState(id);
-  st.steps[String(n)] = val;
+  st.text = st.text || {};
+  st.text[lang] = st.text[lang] || {};
+  if(val === dflt || !val.trim()) delete st.text[lang][kind + ":" + n];
+  else st.text[lang][kind + ":" + n] = val;
   dirty = true;
 }
 
 /* ------------------------------------------------------------------ render */
 function stepsHtml(S, list, kind){
   return '<div class="steps">' + list.map(function(s, i){
-    var n = i + 1;
-    var sh = kind === "after" ? null : shotFor(S, n);
-    var body = '<span class="n">' + n + '</span><p>' + fmt(s) + '</p>';
-    if(sh){
-      var im = img(sh.k);
-      /* aspect-ratio comes from the stored pixel size, so a sheet measures the
-         same before the images decode as after — the page-fit check depends on it */
-      body += '<div class="shot"><img src="' + im.d + '" alt="" style="width:' + sh.size
-            + '%;aspect-ratio:' + im.w + '/' + im.h + '">'
-            + (canEdit ? '<div class="tools">'
-                + '<span>' + t("size") + '</span>'
-                + '<input type="range" min="18" max="100" step="2" value="' + sh.size + '" data-size="' + att(S.id) + '|' + n + '">'
-                + '<span class="pct">' + sh.size + '%</span>'
-                + '<button data-drop-img="' + att(S.id) + '|' + n + '">' + esc(t("remove")) + '</button>'
-              + '</div>' : '')
-            + '</div>';
-    } else if(canEdit && kind !== "after"){
-      body += '<div class="slot">' + esc(t("slot")) + '</div>';
+    var n = i + 1, id = S.id;
+    var text = stepText(S, kind, n, s);
+    var shots = kind === "after" ? [] : shotsFor(S, n);
+    var body = '<span class="n">' + n + '</span><p>' + fmt(text)
+             + (canEdit ? '<button class="pen" data-edit="' + att(id) + '|' + kind + '|' + n + '" title="'
+                        + att(t("editText")) + '" aria-label="' + att(t("editText")) + '">✎</button>' : '')
+             + '</p>';
+    if(shots.length){
+      body += '<div class="shots">' + shots.map(function(sh, j){
+        var im = img(sh.k);
+        /* aspect-ratio comes from the stored pixel size, so a sheet measures the
+           same before the images decode as after — the page-fit check needs it */
+        return '<div class="shot" style="width:' + sh.size + '%">'
+          + '<img src="' + im.d + '" alt="" style="aspect-ratio:' + im.w + '/' + im.h + '">'
+          + (canEdit ? '<div class="tools">'
+              + '<input type="range" min="12" max="100" step="2" value="' + sh.size + '" data-size="' + att(id) + '|' + n + '|' + j + '" aria-label="' + att(t("size")) + '">'
+              + '<span class="pct">' + sh.size + '%</span>'
+              + '<button data-drop-img="' + att(id) + '|' + n + '|' + j + '" title="' + att(t("remove")) + '" aria-label="' + att(t("remove")) + '">✕</button>'
+            + '</div>' : '')
+          + '</div>';
+      }).join("") + '</div>';
     }
-    return '<div class="step" data-slot="' + att(S.id) + '|' + n + '">' + body + '</div>';
+    if(canEdit && kind !== "after"){
+      body += '<div class="slot">' + esc(shots.length ? t("slotMore") : t("slot")) + '</div>';
+    }
+    return '<div class="step" data-slot="' + att(id) + '|' + n + '" data-kind="' + att(kind) + '">' + body + '</div>';
   }).join("") + '</div>';
 }
 
@@ -670,7 +713,7 @@ function trap(v){
 
 function sheetHtml(S){
   var L = S.src, man = S.kind === "man", P = L.proc, M = L.manual;
-  var h = '<section class="sheet' + (man ? " man" : "") + (S.id === sheet ? " active" : "")
+  var h = '<section class="sheet' + (man ? " man" : "") + (canEdit ? " editing" : "") + (S.id === sheet ? " active" : "")
         + (S.store === store ? " in-store" : "") + '" id="sheet-' + S.id + '">';
 
   h += '<div class="mast' + (man ? " man" : "") + '"><div>'
@@ -683,7 +726,7 @@ function sheetHtml(S){
   if(man){
     h += '<div class="applies back">' + fmt(fill(t("backPos"), { pos:S.pos })) + '</div>'
        + stepsHtml(S, M.steps[lang], "man")
-       + trap(M.trap);
+       + (M.trap ? trap(M.trap) : "");
     if(L.after){
       h += '<div class="after"><span class="lbl">' + esc(t("after")) + '</span>'
          + '<p style="margin:0;color:var(--ink-2)">' + esc(txt(L.after.note)) + '</p>'
@@ -693,7 +736,8 @@ function sheetHtml(S){
     h += (P.applies ? '<div class="applies">' + fmt(txt(P.applies)) + '</div>' : '')
        + stepsHtml(S, P.steps[lang], "pos")
        + (P.trap ? trap(P.trap) : '')
-       + '<div class="next">' + (M ? fmt(fill(t("nextMan"), { kit:M.name })) : fmt(txt(P.noManual))) + '</div>';
+       + (M ? '<div class="next">' + fmt(fill(t("nextMan"), { kit:M.name })) + '</div>'
+            : P.noManual ? '<div class="next">' + fmt(txt(P.noManual)) + '</div>' : '');
   }
 
   h += '<div class="rules"><div class="rules-h">' + esc(t("rules")) + '</div><ol>'
@@ -751,8 +795,8 @@ function sheetBar(S, fit){
 function libHtml(){
   var used = {};
   SHEETS.forEach(function(S){
-    var lists = S.kind === "man" ? [S.src.manual.steps.en] : [S.src.proc.steps.en];
-    lists[0].forEach(function(_, i){ var sh = shotFor(S, i + 1); if(sh) used[sh.k] = 1; });
+    var list = S.kind === "man" ? S.src.manual.steps.en : S.src.proc.steps.en;
+    list.forEach(function(_, i){ shotsFor(S, i + 1).forEach(function(sh){ used[sh.k] = 1; }); });
   });
   var groups = {}, order = [];
   Object.keys(FIG).forEach(function(k){
@@ -823,7 +867,8 @@ function buildDoc(){
   var lean = { v:STATE.v, custom:STATE.custom, sheets:{} };
   Object.keys(STATE.sheets).forEach(function(id){
     var st = STATE.sheets[id];
-    if(st.type !== "auto" || Object.keys(st.steps || {}).length) lean.sheets[id] = st;
+    var hasText = st.text && Object.keys(st.text).some(function(l){ return Object.keys(st.text[l]).length; });
+    if(st.type !== "auto" || Object.keys(st.steps || {}).length || hasText) lean.sheets[id] = st;
   });
   var state = JSON.stringify(lean).replace(/</g, "\\u003c");
   return "<!doctype html>\n<html lang=\"" + lang + "\">\n<head>\n<meta charset=\"utf-8\">\n"
@@ -876,10 +921,48 @@ function addCustom(file, then){
   r.readAsDataURL(file);
 }
 
+/* Dropping onto a step that already has a picture adds another rather than
+   replacing it — a step can want two screens. */
 function dropOnStep(target, key){
-  var bits = target.split("|");
-  setShot(bits[0], +bits[1], { k:key, size:img(key).def });
+  var bits = target.split("|"), id = bits[0], n = +bits[1];
+  var list = shotsFor(sheetById(id), n).slice();
+  list.push({ k:key, size:img(key).def });
+  setShots(id, n, list);
   render();
+}
+
+/* Swap a rendered step for its raw markup so wording can be corrected in place. */
+function openEditor(btn){
+  var bits = btn.dataset.edit.split("|"), id = bits[0], kind = bits[1], n = +bits[2];
+  var S = sheetById(id), L = S.src;
+  var list = kind === "man" ? L.manual.steps[lang]
+           : kind === "after" ? L.after.steps[lang]
+           : L.proc.steps[lang];
+  var dflt = list[n - 1];
+  var cur = stepText(S, kind, n, dflt);
+  var pEl = btn.parentNode;
+  var ta = document.createElement("textarea");
+  ta.value = cur;
+  var row = document.createElement("div");
+  row.className = "editrow";
+  row.innerHTML = '<button class="go" data-edit-ok="1">' + esc(t("ok")) + '</button>'
+                + '<button data-edit-cancel="1">' + esc(t("cancel")) + '</button>'
+                + '<span class="edithint">' + esc(t("markupHint")) + '</span>';
+  pEl.innerHTML = "";
+  pEl.appendChild(ta);
+  pEl.appendChild(row);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  var done = function(save){
+    if(save) setStepText(id, kind, n, ta.value, dflt);
+    render();
+  };
+  row.querySelector("[data-edit-ok]").onclick = function(){ done(true); };
+  row.querySelector("[data-edit-cancel]").onclick = function(){ done(false); };
+  ta.onkeydown = function(ev){
+    if(ev.key === "Escape"){ ev.preventDefault(); done(false); }
+    if(ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)){ ev.preventDefault(); done(true); }
+  };
 }
 
 document.addEventListener("click", function(ev){
@@ -888,10 +971,12 @@ document.addEventListener("click", function(ev){
   if(el.dataset.store){ store = el.dataset.store; render(); window.scrollTo(0, 0); return; }
   if(el.dataset.sheet){ sheet = el.dataset.sheet; render(); window.scrollTo(0, 0); return; }
   if(el.dataset.dropImg){
-    var b = el.dataset.dropImg.split("|");
-    setShot(b[0], +b[1], { k:null });
+    var b = el.dataset.dropImg.split("|"), keep = shotsFor(sheetById(b[0]), +b[1]).slice();
+    keep.splice(+b[2], 1);
+    setShots(b[0], +b[1], keep);
     render(); return;
   }
+  if(el.dataset.edit){ openEditor(el); return; }
   if(el.id === "lang-en"){ lang = "en"; render(); return; }
   if(el.id === "lang-fr"){ lang = "fr"; render(); return; }
   if(el.id === "print-one"){ print("print-one"); return; }
@@ -906,11 +991,12 @@ document.addEventListener("input", function(ev){
   var el = ev.target;
   if(el.dataset && el.dataset.size){
     var b = el.dataset.size.split("|"), v = +el.value;
-    var cur = shotFor(sheetById(b[0]), +b[1]);
-    if(!cur) return;
-    setShot(b[0], +b[1], { k:cur.k, size:v });
+    var list = shotsFor(sheetById(b[0]), +b[1]).slice();
+    if(!list[+b[2]]) return;
+    list[+b[2]] = { k:list[+b[2]].k, size:v };
+    setShots(b[0], +b[1], list);
     var wrap = el.closest(".shot");
-    wrap.querySelector("img").style.width = v + "%";
+    wrap.style.width = v + "%";
     wrap.querySelector(".pct").textContent = v + "%";
     return;
   }
