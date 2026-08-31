@@ -91,5 +91,44 @@ without access to it.
     npm run dev
 
 Server-side secrets (`SUPABASE_SERVICE_ROLE_KEY`, `CERT_SESSION_SECRET`,
-`GOOGLE_SERVICE_ACCOUNT_TERMINAL_CERT_JSON`) are set in the Supabase dashboard under
+`GOOGLE_SERVICE_ACCOUNT_TERMINAL_CERT_JSON`, `CERT_SYNC_SECRET`,
+`CERT_ALLOWED_ORIGINS`) are set in the Supabase dashboard under
 Edge Functions → Secrets. They never go in this repo or in Vercel.
+
+## Edge Functions
+
+The browser never holds a key that can read `cert.*`. Every table has RLS
+enabled with no policies and the schema is revoked from `anon`, so all reads and
+writes go through these five functions running on the service role:
+
+| Function | Does |
+|---|---|
+| `auth` | takes a store access code, returns a 12-hour HMAC-signed `{scope, exp}` token. The bcrypt compare stays in Postgres. |
+| `data` | the register for that scope: cycle, terminals, folders, results. A store code sees only its own store. |
+| `upload-url` | a single-use signed upload URL under `cycle/store/terminal/test/`. |
+| `result` | records a test. Pass needs a reference, fail needs an explanation, both need a proof file — and the file is checked to exist in Storage before the row is written. |
+| `drive-sync` | mirrors proof files into the Drive folder tree, after the fact. |
+
+### Why the proof check is server-side
+
+The whole reason this replaced a spreadsheet is that ticking a box is not
+evidence. `result` refuses to write a row whose proof file is not actually in
+the bucket, so "I uploaded it" cannot be asserted by a client.
+
+### Why drive-sync is not on the save path
+
+Drive is a backup copy, not the record. If Google is slow, rate-limited or
+misconfigured, the result is still saved and flagged unsynced (`drive_error`),
+and the next run picks it up from the `cert_results_pending_drive` index. A sync
+that can block a manager finishing a test gets worked around, and a system
+people work around stops being evidence.
+
+Run it on a schedule, or by hand:
+
+    curl -X POST https://<project>.supabase.co/functions/v1/drive-sync \
+      -H "x-cert-sync-key: $CERT_SYNC_SECRET"
+
+### Deploying
+
+    supabase functions deploy auth data upload-url result drive-sync \
+      --project-ref lbmcstlfubkyooeqkhce
