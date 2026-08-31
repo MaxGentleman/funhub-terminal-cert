@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vercel/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Never commit the Google service-account key. It lives in Supabase secrets.
+*service-account*.json
+*credentials*.json
