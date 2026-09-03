@@ -81,6 +81,16 @@ export function record(row) {
 }
 
 /**
+ * Archive or restore a terminal. Head office only — the server checks the
+ * scope again, so a store code cannot reach this even if the button is forged.
+ */
+export function setTerminalActive(terminalId, active, reason, actor) {
+  return call("terminal", {
+    body: { terminal_id: terminalId, active: active, reason: reason || "", actor: actor || "" },
+  });
+}
+
+/**
  * Mirror new proofs into Drive. Never awaited by anything the manager is
  * waiting on: Drive being slow must not make finishing a test feel slow.
  */

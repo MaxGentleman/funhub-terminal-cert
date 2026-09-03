@@ -15,5 +15,8 @@ verify_jwt = false
 [functions.result]
 verify_jwt = false
 
+[functions.terminal]
+verify_jwt = false
+
 [functions.drive-sync]
 verify_jwt = false

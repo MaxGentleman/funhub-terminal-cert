@@ -56,13 +56,33 @@ export async function terminalRef(id: string): Promise<TerminalRef | null> {
     select id, store_code, tests from cert.terminals where id = ${id}`);
 }
 
-/** A store code sees its own store only. Head office sees everything. */
-export async function terminals(scope: string | null) {
+/**
+ * A store code sees its own store only. Head office sees everything.
+ *
+ * Archived terminals — the ones that were retired or never existed — stay out
+ * of a store's register entirely: a manager should not be asked to test a
+ * terminal that is not there. Head office still gets them, flagged inactive,
+ * so the decision can be seen and undone.
+ */
+export async function terminals(scope: string | null, includeArchived = false) {
   return await sql`
     select * from cert.terminals
-     where active
+     where (${includeArchived} or active)
        and (${scope}::text is null or store_code = ${scope})
-     order by id`;
+     order by active desc, id`;
+}
+
+/**
+ * Archive or restore a terminal. Head office only — enforced by the caller.
+ * Nothing is deleted: results already recorded against it stay on the row and
+ * come back intact if it is restored.
+ */
+export async function setTerminalActive(id: string, active: boolean) {
+  return one(await sql<{ id: string; store_code: string; active: boolean }[]>`
+    update cert.terminals
+       set active = ${active}, updated_at = now()
+     where id = ${id}
+     returning id, store_code, active`);
 }
 
 export async function testFolders() {
@@ -75,6 +95,27 @@ export async function folderFor(terminalId: string, testCode: string): Promise<s
     select drive_folder_id from cert.terminal_test_folders
      where terminal_id = ${terminalId} and test_code = ${testCode}`;
   return rows[0]?.drive_folder_id ?? null;
+}
+
+/**
+ * The audit trail for a cycle, newest first. Joined to the result that is
+ * current for the same terminal and test so each line can carry a link
+ * straight to its proof, rather than making someone hunt the Drive folder.
+ */
+export async function auditLog(cycleId: string, scope: string | null, limit = 600) {
+  return await sql`
+    select a.at, a.cycle_id, a.terminal_id, a.test_code, a.store_code,
+           a.action, a.result, a.actor, a.detail,
+           r.drive_file_id, r.proof_filename
+      from cert.audit_log a
+      left join cert.results r
+        on r.cycle_id = a.cycle_id
+       and r.terminal_id = a.terminal_id
+       and r.test_code = a.test_code
+     where a.cycle_id = ${cycleId}
+       and (${scope}::text is null or a.store_code = ${scope})
+     order by a.at desc
+     limit ${limit}`;
 }
 
 export async function results(cycleId: string, scope: string | null) {

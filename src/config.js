@@ -6,6 +6,8 @@ const url = import.meta.env.VITE_SUPABASE_URL || "";
 export const API = url.replace(/\/+$/, "") + "/functions/v1";
 
 export const FOLDER = "https://drive.google.com/drive/folders/";
+/* A single mirrored proof, opened straight from the register. */
+export const FILE = "https://drive.google.com/file/d/";
 
 /* Store names are presentation, not data — the register keys on the code. */
 export const STORES = [

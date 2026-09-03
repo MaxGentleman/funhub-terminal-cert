@@ -8,7 +8,7 @@
 import { T } from "./data/i18n.js";
 import { TESTS } from "./data/tests.js";
 import { PROCS, MANUAL_TAIL, UNIVERSAL, PROC_VIDEO, videoHref } from "./data/guides.js";
-import { FOLDER, STORES, ROOT_DRIVE } from "./config.js";
+import { FOLDER, FILE, STORES, ROOT_DRIVE } from "./config.js";
 import * as api from "./api.js";
 
 /* Step screenshots are ~750 kB of the bundle and are only ever seen inside a
@@ -40,6 +40,7 @@ var ui = {
   advanced: false, openDev: null, openTest: null, modal: null,
   draft: null, blocked: false, saveState: "", readonly: false,
   loading: false, loadErr: "",
+  showArchived: false,
 };
 
 try { var L = localStorage.getItem("fh_lang"); if (L === "fr" || L === "en") ui.lang = L; } catch (e) {}
@@ -75,6 +76,8 @@ function applyData(p) {
       drive: r.drive_folder_id || "",
       testDrive: (p.folders && p.folders[r.id]) || {},
       tests: r.tests || [], flag: r.flag || "",
+      /* Absent on older payloads; a terminal with no opinion is in service. */
+      active: r.active !== false,
     };
   });
 
@@ -89,8 +92,10 @@ function applyData(p) {
   });
 
   s.log = (p.audit || []).map(function (a) {
-    return { at: a.at, dev: a.terminal_id || "—", test: a.test_code || "—",
-             result: a.result || a.action, by: a.actor || "—", detail: a.detail || "" };
+    return { at: a.at, dev: a.terminal_id || "—", test: a.test_code || "",
+             action: a.action || "", result: a.result || "",
+             by: a.actor || "—", detail: a.detail || "",
+             driveId: a.drive_file_id || "", file: a.proof_filename || "" };
   });
 
   state = s;
@@ -189,6 +194,49 @@ function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000)
 function proofName(devId,code,name){ return devId+"_"+code+"_"+todayISO()+"_"+initials(name||tester())+".pdf"; }
 function testFolder(d,code){ return (d.testDrive && d.testDrive[code]) || d.drive; }
 
+/* An archived terminal is not a terminal any more. Every number on this page —
+   the KPIs, a store's percentage, the failure ranking, what still needs
+   attention — counts what is actually in service, or it is a number about
+   equipment nobody owns. The row itself stays, greyed, so the call can be
+   seen and undone. */
+function live(list){ return (list||[]).filter(function(d){ return d.active !== false; }); }
+function liveDevices(){ return live(state.devices); }
+function archivedDevices(){ return state.devices.filter(function(d){ return d.active === false; }); }
+
+/* Three ways into Drive, narrowest first: the exact mirrored file when the
+   sync has run, otherwise the folder that file will land in. Never a dead
+   link — an empty href is worse than an honest folder. */
+function fileHref(id){ return FILE + encodeURIComponent(id) + "/view"; }
+function folderHref(id){ return FOLDER + encodeURIComponent(id); }
+function proofHref(d, code, r){
+  if(r && r.driveId) return fileHref(r.driveId);
+  var f = d ? testFolder(d, code) : "";
+  return f ? folderHref(f) : "";
+}
+/* Where this test's paperwork lives. Two links that are always right — the
+   terminal's folder and this test's own folder — plus the mirrored photo
+   itself once the sync has carried it over. Shown wherever a result is, so
+   nobody has to remember which Drive folder "AMEX PAY on 03-P400-02" was. */
+function driveBar(d, code, r){
+  var tf = testFolder(d, code);
+  var h = '<div class="drivebar"><span class="eyebrow">'+esc(t("inDrive"))+'</span>'
+    + '<a class="btn sm ghost" href="'+att(folderHref(d.drive))+'" target="_blank" rel="noopener">'+esc(t("folderTerminal"))+' ↗</a>'
+    + (tf ? '<a class="btn sm ghost" href="'+att(folderHref(tf))+'" target="_blank" rel="noopener">'+esc(code)+' ↗</a>' : '');
+  if(r && r.driveId) h += '<a class="btn sm" href="'+att(fileHref(r.driveId))+'" target="_blank" rel="noopener">'+esc(t("openProof"))+' ↗</a>';
+  else if(r) h += '<span class="drivepend mono">'+esc(r.driveErr ? t("driveFailed") : t("driveWait"))+'…</span>';
+  return h + '</div>';
+}
+
+/** A small link to the proof, or the folder it is on its way to. */
+function proofLink(d, code, r, cls){
+  var href = proofHref(d, code, r);
+  if(!href) return '<span class="mono dim">—</span>';
+  var exact = !!(r && r.driveId);
+  return '<a class="'+(cls||"prooflink")+(exact?"":" pending")+'" href="'+att(href)+'" target="_blank" rel="noopener"'
+    + ' title="'+att(exact ? t("openProof") : t("proofPendingHint"))+'">'
+    + esc(exact ? t("openProof") : t("openTestFolder")) + ' ↗</a>';
+}
+
 function devStats(d){
   var p=0,f=0,n=0,u=0;
   for(var i=0;i<d.tests.length;i++){
@@ -205,9 +253,34 @@ function devStatus(d){
   return "partial";
 }
 function totals(list){
-  var o={p:0,f:0,n:0,u:0,total:0};
-  for(var i=0;i<list.length;i++){ var s=devStats(list[i]); o.p+=s.p;o.f+=s.f;o.n+=s.n;o.u+=s.u;o.total+=s.total; }
+  var o={p:0,f:0,n:0,u:0,total:0}, L=live(list);
+  for(var i=0;i<L.length;i++){ var s=devStats(L[i]); o.p+=s.p;o.f+=s.f;o.n+=s.n;o.u+=s.u;o.total+=s.total; }
   return o;
+}
+
+/* ------------------------------------------------- which software fails most
+   Grouped by the POS the terminal runs, because that is the thing head office
+   can actually act on: "Cluster fails" is a phone call to one vendor, whereas
+   "DIX30 fails" is three vendors and no lead. Ranked by count, because that is
+   the question asked; the rate rides along so one bad terminal on a system
+   with two tests does not read the same as a system-wide fault. */
+function softwareFailures(){
+  var by = {}, L = liveDevices(), i, j;
+  for(i=0;i<L.length;i++){
+    var d = L[i], name = d.pos || "—";
+    var g = by[name] || (by[name] = { pos:name, fail:0, done:0, stores:{}, terminals:0 });
+    g.terminals++;
+    for(j=0;j<d.tests.length;j++){
+      var r = res(d.id, d.tests[j]);
+      if(!r) continue;
+      g.done++;
+      if(r.result === "fail"){ g.fail++; g.stores[d.store] = (g.stores[d.store]||0) + 1; }
+    }
+  }
+  var out = [];
+  for(var k in by) if(by[k].fail > 0) out.push(by[k]);
+  out.sort(function(a,b){ return (b.fail - a.fail) || (b.fail/(b.done||1) - a.fail/(a.done||1)); });
+  return out;
 }
 
 /* ------------------------------------------------------------------- csv */
@@ -286,7 +359,8 @@ function cycleBar(){
 
 /* ---------------------------------------------------------------- views */
 function viewDash(){
-  var o = totals(state.devices);
+  var LIVE = liveDevices(), ARCH = archivedDevices();
+  var o = totals(LIVE);
   var h = '<div class="stack">' + cycleBar();
 
   if(ui.readonly) h += '<div class="banner warn">'+esc(t("readonly"))+'</div>';
@@ -295,7 +369,7 @@ function viewDash(){
 
 
   h += '<div class="kpis">'
-    +'<div class="card kpi"><div class="n">'+state.devices.length+'</div><div class="l eyebrow">'+esc(t("k_devices"))+'</div></div>'
+    +'<div class="card kpi"><div class="n">'+LIVE.length+'</div><div class="l eyebrow">'+esc(t("k_devices"))+(ARCH.length?' <span class="dim">· '+ARCH.length+' '+esc(t("archivedShort"))+'</span>':'')+'</div></div>'
     +'<div class="card kpi pass"><div class="n">'+o.p+'</div><div class="l eyebrow">'+esc(t("k_certified"))+' / '+o.total+'</div></div>'
     +'<div class="card kpi fail"><div class="n">'+o.f+'</div><div class="l eyebrow">'+esc(t("k_failed"))+'</div></div>'
     +'<div class="card kpi todo"><div class="n">'+o.u+'</div><div class="l eyebrow">'+esc(t("k_untested"))+'</div></div>'
@@ -304,7 +378,7 @@ function viewDash(){
   h += '<section><div class="sec-h"><h2>'+esc(t("progress"))+'</h2>'+legend()+'</div><div class="storegrid">';
   for(var i=0;i<state.stores.length;i++){
     var s = state.stores[i];
-    var list = state.devices.filter(function(d){ return d.store===s.code; });
+    var list = LIVE.filter(function(d){ return d.store===s.code; });
     var so = totals(list);
     var pct = so.total ? Math.round((so.p+so.n)/so.total*100) : 0;
     h += '<div class="card storecard">'
@@ -316,9 +390,31 @@ function viewDash(){
   }
   h += '</div></section>';
 
+  var SF = softwareFailures();
+  h += '<section><div class="sec-h"><h2>'+esc(t("softFailTitle"))+'</h2>'
+    + '<span class="sec-note">'+esc(t("softFailLead"))+'</span></div><div class="card">';
+  if(!SF.length){ h += '<div class="empty">'+esc(t("softFailNone"))+'</div>'; }
+  else {
+    var worst = SF[0].fail || 1;
+    h += '<div class="ranklist">';
+    for(var sfi=0; sfi<SF.length; sfi++){
+      var g = SF[sfi], where = [], sc;
+      for(sc in g.stores) where.push(sc+" ("+g.stores[sc]+")");
+      var rate = g.done ? Math.round(g.fail/g.done*100) : 0;
+      h += '<div class="rankrow">'
+        + '<span class="rk-pos">'+esc(g.pos)+'</span>'
+        + '<span class="rk-bar"><i style="width:'+(g.fail/worst*100).toFixed(2)+'%"></i></span>'
+        + '<span class="rk-n">'+g.fail+'</span>'
+        + '<span class="rk-meta mono">'+rate+'% '+esc(t("ofRecorded"))+' · '+esc(where.join(", "))+'</span>'
+        + '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div></section>';
+
   var att_list = [];
-  for(var j=0;j<state.devices.length;j++){
-    var d = state.devices[j];
+  for(var j=0;j<LIVE.length;j++){
+    var d = LIVE[j];
     for(var k=0;k<d.tests.length;k++){
       var r = res(d.id, d.tests[k]);
       if(r && r.result==="fail") att_list.push({d:d, c:d.tests[k], r:r});
@@ -327,10 +423,11 @@ function viewDash(){
   h += '<section><div class="sec-h"><h2>'+esc(t("attention"))+'</h2></div><div class="card">';
   if(!att_list.length){ h += '<div class="empty">'+esc(t("attention_none"))+'</div>'; }
   else {
-    h += '<div class="tblwrap"><table><thead><tr><th>'+esc(t("log_dev"))+'</th><th>'+esc(t("log_test"))+'</th><th>'+esc(t("whatFailed"))+'</th><th>'+esc(t("log_by"))+'</th><th>'+esc(t("log_when"))+'</th></tr></thead><tbody>';
+    h += '<div class="tblwrap"><table><thead><tr><th>'+esc(t("log_dev"))+'</th><th>'+esc(t("log_test"))+'</th><th>'+esc(t("whatFailed"))+'</th><th>'+esc(t("log_by"))+'</th><th>'+esc(t("log_when"))+'</th><th>'+esc(t("proofCol"))+'</th></tr></thead><tbody>';
     for(var m=0;m<att_list.length;m++){
       var a = att_list[m];
-      h += '<tr><td class="m">'+esc(a.d.id)+' · '+esc(a.d.name)+'</td><td>'+esc(testDef(a.c)[ui.lang].n)+'</td><td>'+esc(a.r.notes)+'</td><td>'+esc(a.r.tester)+'</td><td class="m">'+esc(fmtDT(a.r.at))+'</td></tr>';
+      h += '<tr><td class="m">'+esc(a.d.id)+' · '+esc(a.d.name)+'</td><td>'+esc(testDef(a.c)[ui.lang].n)+'</td><td>'+esc(a.r.notes)+'</td><td>'+esc(a.r.tester)+'</td><td class="m">'+esc(fmtDT(a.r.at))+'</td>'
+        + '<td>'+proofLink(a.d, a.c, a.r)+'</td></tr>';
     }
     h += '</tbody></table></div>';
   }
@@ -354,6 +451,7 @@ function filtered(){
   var q = ui.q.toLowerCase().trim();
   var only = isAdmin() ? ui.store : ui.scope;   /* managers are pinned to their store */
   return state.devices.filter(function(d){
+    if(d.active === false) return false;          /* archived: see archivedList() */
     if(only && d.store!==only) return false;
     if(ui.filter!=="all"){
       var s = devStatus(d);
@@ -364,6 +462,36 @@ function filtered(){
     if(!q) return true;
     return (d.id+" "+d.name+" "+d.proc+" "+d.model+" "+d.mid+" "+d.serial+" "+d.pos+" "+d.purpose).toLowerCase().indexOf(q)>=0;
   });
+}
+
+/* Archived terminals sit under the register, not in it: greyed, collapsed,
+   and reachable, so putting one back is a click rather than a support ticket.
+   Head office is the only scope that is ever sent them. */
+function archivedList(){
+  if(!isAdmin()) return "";
+  var only = ui.store, A = archivedDevices().filter(function(d){ return !only || d.store===only; });
+  if(!A.length) return "";
+  var open = ui.showArchived;
+  var h = '<section class="archsec"><button class="archtoggle" data-act="togglearch" aria-expanded="'+open+'">'
+    + '<span>'+esc(t("archivedTerminals"))+'</span><span class="archcount">'+A.length+'</span>'
+    + '<span class="caret">'+(open?"▾":"▸")+'</span></button>';
+  if(open){
+    h += '<div class="archnote">'+esc(t("archivedLead"))+'</div><div class="devlist arch">';
+    for(var i=0;i<A.length;i++){
+      var d = A[i], st = store(d.store);
+      h += '<div class="card sdev archived">'
+        + '<div class="archrow">'
+        + '<span class="sdev-name">'+esc(d.id)+' · '+esc(d.name)+'</span>'
+        + '<span class="sdev-sub"><span class="pbadge">'+esc(d.proc)+' '+esc(d.model)+'</span>'
+        + '<span>'+esc(st.name)+'</span><span class="mono">'+esc(d.pos)+'</span></span>'
+        + '<span class="pillbadge pb-na">'+esc(t("archivedPill"))+'</span>'
+        + '<a class="btn sm ghost" href="'+att(folderHref(d.drive))+'" target="_blank" rel="noopener">'+esc(t("openFolder"))+' ↗</a>'
+        + '<button class="btn sm" data-act="restore" data-dev="'+att(d.id)+'">'+esc(t("restoreBtn"))+'</button>'
+        + '</div></div>';
+    }
+    h += '</div>';
+  }
+  return h + '</section>';
 }
 
 function lockMsg(d){
@@ -401,7 +529,8 @@ function deviceCard(d){
       +'<span>'+esc(t("mid"))+' <b>'+esc(d.mid||"—")+'</b></span>'
       +(d.serial?'<span>'+esc(t("serial"))+' <b>'+esc(d.serial)+'</b></span>':'')
       +'<span>'+esc(t("pos"))+' <b>'+esc(d.pos)+'</b></span>'
-      +'<span><a href="'+FOLDER+esc(d.drive)+'" target="_blank" rel="noopener">'+esc(t("openFolder"))+' ↗</a></span>'
+      +'<span><a href="'+att(folderHref(d.drive))+'" target="_blank" rel="noopener">'+esc(t("openFolder"))+' ↗</a></span>'
+      + (isAdmin() ? '<span class="archcell"><button class="btn sm ghost danger" data-act="archive" data-dev="'+att(d.id)+'">'+esc(t("archiveBtn"))+'</button></span>' : '')
       +'</div>';
 
     h += '<div class="tests">';
@@ -420,8 +549,7 @@ function deviceCard(d){
       else if(isOpen){ var pr2 = procFor(d, code);
         h += '<div class="test-body"><div class="howto"><b>'+esc(def[ui.lang].n)+'</b>'+esc(def[ui.lang].d)+'</div>'
           + (pr2 ? procBlock(pr2) : '') + (MANUAL_CODES.indexOf(code)>=0 ? tailBlock(d.pos) : '')
-          + '<div class="folderline"><span class="eyebrow">'+esc(t("proofFolderFor"))+' '+esc(code)+'</span>'
-          + '<a class="btn sm" href="'+FOLDER+esc(testFolder(d,code))+'" target="_blank" rel="noopener">'+esc(t("openTestFolder"))+' ↗</a></div>'
+          + driveBar(d, code, r)
           + '<div class="banner warn">'+esc(lockMsg(d))+'</div></div>'; }
       h += '</div>';
     }
@@ -455,9 +583,16 @@ function simpleDeviceCard(d){
         + '<span class="stest-n">'+esc(testDef(code)[ui.lang].n)+'</span>'+resPill(r)
         + '<span class="sdev-caret">'+(isOpen?"▾":"▸")+'</span></button>';
       if(isOpen && canEdit(d.store)) h += testPanel(d, code, true);
-      else if(isOpen) h += '<div class="stest-body"><div class="banner warn">'+esc(lockMsg(d))+'</div></div>';
+      else if(isOpen) h += '<div class="stest-body">' + driveBar(d, code, r) + '<div class="banner warn">'+esc(lockMsg(d))+'</div></div>';
+      else if(r) h += '<div class="stest-done">'
+        + '<span class="mono">'+esc(fmtDT(r.at))+' · '+esc(r.tester)+'</span>'
+        + proofLink(d, code, r) + '</div>';
       h += '</div>';
     }
+    h += '<div class="sdev-foot">'
+      + '<a class="btn sm ghost" href="'+att(folderHref(d.drive))+'" target="_blank" rel="noopener">'+esc(t("openFolder"))+' ↗</a>'
+      + (isAdmin() ? '<button class="btn sm ghost danger" data-act="archive" data-dev="'+att(d.id)+'">'+esc(t("archiveBtn"))+'</button>' : '')
+      + '</div>';
     h += '</div>';
   }
   return h + '</div>';
@@ -476,7 +611,8 @@ function viewDevicesSimple(){
   h += '<div class="devlist">';
   if(!list.length) h += '<div class="card"><div class="empty">—</div></div>';
   for(i=0;i<list.length;i++) h += simpleDeviceCard(list[i]);
-  return h + '</div></div>';
+  h += '</div>' + archivedList();
+  return h + '</div>';
 }
 
 function viewDevices(){
@@ -501,7 +637,7 @@ function viewDevices(){
   h += '<div class="devlist">';
   if(!list.length) h += '<div class="card"><div class="empty">—</div></div>';
   for(var j=0;j<list.length;j++) h += deviceCard(list[j]);
-  h += '</div></div>';
+  h += '</div>' + archivedList() + '</div>';
   return h;
 }
 
@@ -511,17 +647,25 @@ function viewLog(){
   if(!state.log.length){ h += '<div class="empty">'+esc(t("log_empty"))+'</div></div></div>'; return h; }
   h += '<div class="tblwrap"><table><thead><tr>'
     +'<th>'+esc(t("log_when"))+'</th><th>'+esc(t("log_dev"))+'</th><th>'+esc(t("log_test"))+'</th>'
-    +'<th>'+esc(t("log_res"))+'</th><th>'+esc(t("log_by"))+'</th><th>'+esc(t("log_detail"))+'</th></tr></thead><tbody>';
+    +'<th>'+esc(t("log_res"))+'</th><th>'+esc(t("log_by"))+'</th><th>'+esc(t("log_detail"))+'</th>'
+    +'<th>'+esc(t("proofCol"))+'</th></tr></thead><tbody>';
   for(var i=0;i<state.log.length && i<600;i++){
     var L = state.log[i], D = dev(L.dev);
     var pill = L.result==="pass" ? '<span class="pillbadge pb-ok">'+esc(t("pass"))+'</span>'
       : L.result==="fail" ? '<span class="pillbadge pb-bad">'+esc(t("fail"))+'</span>'
       : L.result==="na" ? '<span class="pillbadge pb-na">'+esc(t("na"))+'</span>'
+      : L.action ? '<span class="pillbadge pb-na">'+esc(t("act_"+L.action) || L.action)+'</span>'
       : '<span class="pillbadge pb-na">—</span>';
-    h += '<tr><td class="m">'+esc(fmtDT(L.at))+'</td>'
+    /* The log line carries the file id the row was joined to; where the mirror
+       has not run yet, the test's folder is still the honest destination. */
+    var link = L.test
+      ? proofLink(D, L.test, { driveId: L.driveId })
+      : '<span class="mono dim">—</span>';
+    h += '<tr'+(L.result==="fail"?' class="badrow"':'')+'><td class="m">'+esc(fmtDT(L.at))+'</td>'
       +'<td class="m">'+esc(L.dev)+(D?' · '+esc(D.name):'')+'</td>'
-      +'<td>'+esc(testDef(L.test)[ui.lang].n)+'</td>'
-      +'<td>'+pill+'</td><td>'+esc(L.by)+'</td><td class="m">'+esc(L.detail||"")+'</td></tr>';
+      +'<td>'+(L.test?esc(testDef(L.test)[ui.lang].n):'—')+'</td>'
+      +'<td>'+pill+'</td><td>'+esc(L.by)+'</td><td class="m">'+esc(L.detail||"")+'</td>'
+      +'<td>'+link+'</td></tr>';
   }
   return h + '</tbody></table></div></div></div>';
 }
@@ -663,6 +807,30 @@ var EXTRA = {
     errGeneric: "Something went wrong and nothing was recorded.",
     driveWait: "Backing up to Drive",
     driveOk: "In Drive",
+    driveFailed: "Drive backup failed",
+    openProof: "Open the proof",
+    proofCol: "Proof",
+    inDrive: "In Drive",
+    folderTerminal: "This terminal",
+    proofPendingHint: "Not mirrored to Drive yet — this opens the folder it is going to.",
+    archiveBtn: "Archive this terminal",
+    archiveTitle: "Archive this terminal",
+    archiveLead: "It comes off every store worklist and out of every number on the overview. Nothing already recorded is deleted, and you can put it back at any time.",
+    archiveWhy: "Why is it going?",
+    archiveWhyHint: "Removed from service, never installed, replaced by…",
+    archiveConfirm: "Archive it",
+    archiveNeeds: "Say why, and who is archiving it.",
+    archivedTerminals: "Archived terminals",
+    archivedLead: "Out of service or never installed. They count towards nothing and no store is asked to test them.",
+    archivedPill: "Archived",
+    archivedShort: "archived",
+    restoreBtn: "Put it back",
+    softFailTitle: "Where the failures are",
+    softFailLead: "By software, every store together",
+    softFailNone: "No failed test on record.",
+    ofRecorded: "of what has been tested",
+    act_archive: "archived",
+    act_restore: "restored",
   },
   fr: {
     proofLead: "Photographiez la copie marchand signée. Le registre refuse le test sans elle.",
@@ -682,6 +850,30 @@ var EXTRA = {
     errGeneric: "Une erreur est survenue et rien n'a été enregistré.",
     driveWait: "Sauvegarde vers Drive",
     driveOk: "Dans Drive",
+    driveFailed: "Échec de la sauvegarde Drive",
+    openProof: "Ouvrir la preuve",
+    proofCol: "Preuve",
+    inDrive: "Dans Drive",
+    folderTerminal: "Ce terminal",
+    proofPendingHint: "Pas encore copiée vers Drive — ceci ouvre le dossier de destination.",
+    archiveBtn: "Archiver ce terminal",
+    archiveTitle: "Archiver ce terminal",
+    archiveLead: "Il disparaît de la liste de chaque succursale et de tous les chiffres du sommaire. Rien de ce qui est déjà consigné n'est supprimé, et vous pouvez le remettre quand vous voulez.",
+    archiveWhy: "Pourquoi le retirer ?",
+    archiveWhyHint: "Retiré du service, jamais installé, remplacé par…",
+    archiveConfirm: "Archiver",
+    archiveNeeds: "Indiquez la raison et qui archive.",
+    archivedTerminals: "Terminaux archivés",
+    archivedLead: "Hors service ou jamais installés. Ils ne comptent nulle part et aucune succursale n'a à les tester.",
+    archivedPill: "Archivé",
+    archivedShort: "archivés",
+    restoreBtn: "Remettre en service",
+    softFailTitle: "Où sont les échecs",
+    softFailLead: "Par logiciel, toutes succursales confondues",
+    softFailNone: "Aucun test échoué au dossier.",
+    ofRecorded: "de ce qui a été testé",
+    act_archive: "archivé",
+    act_restore: "remis en service",
   },
 };
 
@@ -835,6 +1027,7 @@ function testPanel(d, code, simple) {
       + '<span class="mono">' + esc(fmtDT(prev.at)) + ' · ' + esc(prev.tester) + (prev.ref ? ' · ' + esc(prev.ref) : '') + '</span>'
       + '<span class="prevnote">' + esc(t("prevLead")) + '</span></div>';
   }
+  h += driveBar(d, code, prev);
 
   h += '<div class="fld"><label>' + esc(t("result")) + '</label><div class="segbtns">'
     + '<button class="segbtn p" data-act="draftres" data-v="pass" aria-pressed="' + (dr.result === "pass") + '">' + esc(t("pass")) + '</button>'
@@ -876,6 +1069,30 @@ function testPanel(d, code, simple) {
     + '<button class="btn ghost" data-act="canceldraft">' + esc(t("cancel")) + '</button>'
     + '</div></div>';
   return h;
+}
+
+/* Archiving is not a checkbox. It removes a terminal from three managers'
+   worklists and from every number head office reads, so it asks who did it and
+   why, and the answer lands in the audit log next to the change. */
+function modalArchive() {
+  var m = ui.modal, d = dev(m.dev) || { id: m.dev, name: "" };
+  var busy = !!m.busy;
+  return '<div class="scrim" data-act="scrim"><div class="modal" role="dialog" aria-modal="true">'
+    + '<div class="modal-h"><h2>' + esc(t("archiveTitle")) + '</h2><button class="btn ghost" data-act="closemodal">✕</button></div>'
+    + '<div class="modal-b">'
+    + '<div class="archwho"><b>' + esc(d.id) + '</b> · ' + esc(d.name) + '</div>'
+    + '<p class="lead">' + esc(t("archiveLead")) + '</p>'
+    + '<div class="fld req"><label>' + esc(t("archiveWhy")) + '</label>'
+    + '<textarea data-fld="archReason" placeholder="' + att(t("archiveWhyHint")) + '">' + esc(m.reason || "") + '</textarea></div>'
+    + '<div class="fld req"><label>' + esc(t("tester")) + '</label>'
+    + '<input data-fld="archActor" value="' + att(m.actor != null ? m.actor : tester()) + '"></div>'
+    + (m.err ? '<div class="blockmsg">' + esc(m.err) + '</div>' : '')
+    + '</div>'
+    + '<div class="modal-f">'
+    + '<button class="btn" data-act="closemodal">' + esc(t("cancel")) + '</button>'
+    + '<button class="btn primary danger" data-act="doarchive"' + (busy ? ' disabled' : '') + '>'
+    + esc(busy ? t("saving") : t("archiveConfirm")) + '</button>'
+    + '</div></div></div>';
 }
 
 /* ------------------------------------------------------------------ modals */
@@ -956,6 +1173,7 @@ function render() {
     + '</div></header><main><div class="wrap">' + body + '</div></main>';
 
   if (ui.modal && ui.modal.kind === "settings") h += modalSettings();
+  if (ui.modal && ui.modal.kind === "archive") h += modalArchive();
   if (ui.lightbox) h += '<div class="scrim lb" data-act="closelb"><img src="' + att(ui.lightbox) + '" alt=""><button class="btn ghost lb-x" data-act="closelb">✕</button></div>';
 
   app.innerHTML = h;
@@ -1001,6 +1219,23 @@ document.addEventListener("click", function (ev) {
     if (gd) { ui.guideStore = gd.store; ui.guide = gd.pos; ui.view = "guide"; render(); window.scrollTo(0, 0); }
     return;
   }
+  if (a === "togglearch") { ui.showArchived = !ui.showArchived; render(); return; }
+  if (a === "archive") {
+    if (!isAdmin()) return;
+    ui.modal = { kind: "archive", dev: el.getAttribute("data-dev"), reason: "", actor: tester(), err: "" };
+    render(); return;
+  }
+  if (a === "doarchive") { doArchive(); return; }
+  if (a === "restore") {
+    if (!isAdmin()) return;
+    var rid = el.getAttribute("data-dev");
+    el.disabled = true;
+    api.setTerminalActive(rid, true, "", tester() || "head office")
+      .then(function () { setSave("ok", t("saved")); return refresh(); })
+      .then(function () { setTimeout(function () { if (ui.saveState === "ok") setSave("", ""); }, 2600); })
+      .catch(function (err) { el.disabled = false; setSave("err", errText(err)); });
+    return;
+  }
   if (a === "opensettings") { ui.modal = { kind: "settings" }; render(); return; }
   if (a === "closemodal") { ui.modal = null; render(); return; }
   if (a === "signout") {
@@ -1042,6 +1277,25 @@ document.addEventListener("click", function (ev) {
   }
 });
 
+function doArchive() {
+  var m = ui.modal;
+  if (!m || m.busy) return;
+  var reason = String(m.reason || "").trim(), actor = String(m.actor != null ? m.actor : tester()).trim();
+  if (!reason || !actor) { m.err = t("archiveNeeds"); render(); return; }
+  setTester(actor);
+  m.busy = true; m.err = ""; render();
+  api.setTerminalActive(m.dev, false, reason, actor).then(function () {
+    ui.modal = null;
+    ui.openDev = null; ui.openTest = null; ui.draft = null;
+    setSave("ok", t("saved"));
+    return refresh();
+  }).then(function () {
+    setTimeout(function () { if (ui.saveState === "ok") setSave("", ""); }, 2600);
+  }).catch(function (err) {
+    if (ui.modal === m) { m.busy = false; m.err = err.code === "admin_only" ? t("adminOnly") : errText(err); render(); }
+  });
+}
+
 document.addEventListener("input", function (ev) {
   var el = ev.target;
   if (el.getAttribute && el.getAttribute("data-gate")) { ui.gateCode = el.value; return; }
@@ -1053,6 +1307,8 @@ document.addEventListener("input", function (ev) {
     if (ne) { ne.focus(); try { ne.setSelectionRange(pos, pos); } catch (e) {} }
     return;
   }
+  if (f === "archReason" && ui.modal) { ui.modal.reason = el.value; return; }
+  if (f === "archActor" && ui.modal) { ui.modal.actor = el.value; return; }
   if (ui.draft && ui.draft.hasOwnProperty(f)) { ui.draft[f] = el.value; return; }
 });
 

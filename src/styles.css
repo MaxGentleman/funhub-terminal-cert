@@ -352,3 +352,57 @@ tbody tr:hover{background:var(--surface-2)}
 .tdesc{padding:9px 11px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);
   font-size:13.5px;line-height:1.45;color:var(--ink)}
 .tdesc strong{font-weight:600}
+
+/* --------------------------------------------------- archived + Drive links
+   An archived terminal has to read as switched off at a glance, without
+   vanishing: greyed and desaturated, still legible, still one click from
+   coming back. */
+.drivebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px dashed var(--line-strong);border-radius:var(--radius-sm);padding:8px 11px;margin:10px 0}
+.drivebar .eyebrow{margin-right:auto}
+.drivepend{font-size:11px;color:var(--ink-3)}
+.prooflink{font-family:var(--mono);font-size:11.5px;font-weight:600;white-space:nowrap}
+.prooflink.pending{color:var(--ink-3);font-weight:500}
+.dim{color:var(--ink-3)}
+
+.stest-done{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;
+  padding:5px 12px 9px;font-size:11.5px;color:var(--ink-3)}
+.sdev-foot{display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px 12px;border-top:1px solid var(--line)}
+.archcell{margin-left:auto}
+.btn.danger{color:var(--fail);border-color:var(--fail-line)}
+.btn.primary.danger{background:var(--fail);border-color:var(--fail);color:#fff}
+
+.archsec{margin-top:22px}
+.archtoggle{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--ink-2);border-radius:var(--radius-sm);
+  padding:9px 13px;font-family:var(--disp);font-size:12px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.archtoggle .archcount{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.archtoggle .caret{margin-left:auto;color:var(--ink-3)}
+.archnote{font-size:12px;color:var(--ink-3);padding:9px 2px 4px;line-height:1.5}
+.devlist.arch{display:flex;flex-direction:column;gap:8px}
+.card.archived{opacity:.62;filter:grayscale(1)}
+.card.archived:hover{opacity:.85}
+.archrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 13px}
+.archrow .sdev-sub{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--ink-3);font-size:11.5px}
+.archrow .btn{margin-left:0}
+.archrow .pillbadge{margin-left:auto}
+.archwho{font-family:var(--mono);font-size:13px;margin-bottom:6px}
+
+/* ---------------------------------------------------- failures by software
+   Ranked bars rather than a pie: the question is "which one is worst", and
+   length answers that faster than angle. */
+.sec-note{font-size:11.5px;color:var(--ink-3);margin-left:auto}
+.ranklist{display:flex;flex-direction:column;gap:10px}
+.rankrow{display:grid;grid-template-columns:minmax(72px,116px) 1fr auto;grid-template-rows:auto auto;
+  gap:3px 12px;align-items:center}
+.rk-pos{font-family:var(--disp);font-weight:600;font-size:13px}
+.rk-bar{height:9px;border-radius:5px;background:var(--surface-3);overflow:hidden}
+.rk-bar i{display:block;height:100%;background:var(--fail)}
+.rk-n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--fail);min-width:2ch;text-align:right}
+.rk-meta{grid-column:2 / -1;font-size:11px;color:var(--ink-3)}
+tr.badrow td{background:var(--fail-bg)}
+@media (max-width:560px){
+  .rankrow{grid-template-columns:1fr auto}
+  .rk-bar{grid-column:1 / -1;order:3}
+  .rk-meta{grid-column:1 / -1;order:4}
+}
