@@ -10,3 +10,8 @@ dist/
 # Never commit the Google service-account key. It lives in Supabase secrets.
 *service-account*.json
 *credentials*.json
+
+# vite writes these while resolving the config; they are never wanted
+vite.config.js.timestamp-*.mjs
+_to_delete/
+_REFUND SHEETS PDF/
