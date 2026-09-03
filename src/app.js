@@ -805,6 +805,7 @@ var EXTRA = {
     errStore: "That test belongs to another store.",
     errProof: "The photo did not finish uploading. Take it again.",
     errGeneric: "Something went wrong and nothing was recorded.",
+    errGateway: "This function is refusing the register's session. Turn off \u201cVerify JWT\u201d on it in Supabase.",
     driveWait: "Backing up to Drive",
     driveOk: "In Drive",
     driveFailed: "Drive backup failed",
@@ -848,6 +849,7 @@ var EXTRA = {
     errStore: "Ce test appartient à un autre magasin.",
     errProof: "La photo ne s'est pas téléversée. Reprenez-la.",
     errGeneric: "Une erreur est survenue et rien n'a été enregistré.",
+    errGateway: "Cette fonction refuse la session du registre. Désactivez \u00ab Verify JWT \u00bb dessus dans Supabase.",
     driveWait: "Sauvegarde vers Drive",
     driveOk: "Dans Drive",
     driveFailed: "Échec de la sauvegarde Drive",
@@ -884,6 +886,11 @@ function errText(err) {
   if (c === "unauthorised") return t("errSession");
   if (c === "wrong_store") return t("errStore");
   if (c === "proof_not_uploaded" || c === "upload_failed" || c === "proof_path_mismatch") return t("errProof");
+  if (c === "admin_only") return t("adminOnly");
+  if (c === "reason_required") return t("archiveNeeds");
+  /* The gateway turned the request away before the function ran. Only head
+     office can fix it, so say what is wrong instead of shrugging. */
+  if (/JWT/i.test(c)) return t("errGateway");
   return t("errGeneric");
 }
 

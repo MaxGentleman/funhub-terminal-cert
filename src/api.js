@@ -37,7 +37,11 @@ async function call(path, { method = "POST", body, auth = true } = {}) {
   }
 
   const out = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(out.error || `http_${res.status}`, res.status);
+  /* Our own errors come back as { error }. The Supabase gateway rejects some
+     requests before they ever reach the function and answers with { code } —
+     surfacing that instead of a bare http_401 is the difference between "check
+     the JWT setting on this function" and "something went wrong". */
+  if (!res.ok) throw new ApiError(out.error || out.code || `http_${res.status}`, res.status);
   return out;
 }
 

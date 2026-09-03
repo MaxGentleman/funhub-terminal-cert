@@ -390,19 +390,24 @@ tbody tr:hover{background:var(--surface-2)}
 
 /* ---------------------------------------------------- failures by software
    Ranked bars rather than a pie: the question is "which one is worst", and
-   length answers that faster than angle. */
+   length answers that faster than angle. `.card` carries no padding of its
+   own — every block that uses one brings its own — so this one does too. */
 .sec-note{font-size:11.5px;color:var(--ink-3);margin-left:auto}
-.ranklist{display:flex;flex-direction:column;gap:10px}
-.rankrow{display:grid;grid-template-columns:minmax(72px,116px) 1fr auto;grid-template-rows:auto auto;
-  gap:3px 12px;align-items:center}
-.rk-pos{font-family:var(--disp);font-weight:600;font-size:13px}
-.rk-bar{height:9px;border-radius:5px;background:var(--surface-3);overflow:hidden}
-.rk-bar i{display:block;height:100%;background:var(--fail)}
-.rk-n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--fail);min-width:2ch;text-align:right}
-.rk-meta{grid-column:2 / -1;font-size:11px;color:var(--ink-3)}
+.ranklist{display:flex;flex-direction:column;padding:6px 18px 10px}
+.rankrow{display:grid;grid-template-columns:minmax(84px,132px) 1fr auto;
+  grid-template-rows:auto auto;gap:5px 16px;align-items:center;
+  padding:13px 0;border-bottom:1px solid var(--line)}
+.rankrow:last-child{border-bottom:0}
+.rk-pos{font-family:var(--disp);font-weight:600;font-size:13.5px;line-height:1.2}
+.rk-bar{height:10px;border-radius:5px;background:var(--surface-3);overflow:hidden}
+.rk-bar i{display:block;height:100%;background:var(--fail);border-radius:5px}
+.rk-n{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--fail);
+  min-width:2.5ch;text-align:right;font-variant-numeric:tabular-nums}
+.rk-meta{grid-column:2 / 3;font-size:11px;color:var(--ink-3);line-height:1.45}
 tr.badrow td{background:var(--fail-bg)}
 @media (max-width:560px){
-  .rankrow{grid-template-columns:1fr auto}
+  .ranklist{padding:4px 13px 8px}
+  .rankrow{grid-template-columns:1fr auto;gap:7px 12px}
   .rk-bar{grid-column:1 / -1;order:3}
   .rk-meta{grid-column:1 / -1;order:4}
 }
