@@ -42,6 +42,8 @@ var ui = {
   draft: null, blocked: false, saveState: "", readonly: false,
   loading: false, loadErr: "",
   showArchived: false,
+  openMid: null, midEdit: null, midSaving: false, midErr: "",
+  newTerm: null, newTermBusy: false, newTermErr: "",
 };
 
 try { var L = localStorage.getItem("fh_lang"); if (L === "fr" || L === "en") ui.lang = L; } catch (e) {}
@@ -99,6 +101,7 @@ function applyData(p) {
     return {
       id: m.id, mid: m.mid || "", store: m.store_code, proc: m.processor, pos: m.pos,
       label: m.label || "", purpose: m.purpose || "",
+      hasStore: !!m.store_code,
       batch: hhmm(m.batch_close), zout: hhmm(m.pos_zout),
       phone: m.support_phone || "", email: m.support_email || "",
       rep: m.account_rep || "", portal: m.portal_url || "",
@@ -240,7 +243,6 @@ function midStats(m){
   /* Both clocks set and disagreeing is the thing worth shouting about: a sale
      rung between them settles on one day and reports on another. */
   o.clash = !!(m.batch && m.zout && m.batch !== m.zout);
-  o.sharedMid = state.merchants.filter(function(x){ return x.mid && x.mid === m.mid; }).length > 1;
   return o;
 }
 
@@ -704,8 +706,8 @@ function midCard(m){
   var h = '<div class="card mid' + (st.clash ? ' clash' : '') + '">';
 
   h += '<button class="mid-h" data-act="togglemid" data-mid="' + att(m.id) + '" aria-expanded="' + open + '">'
-    + '<span class="mid-num mono">' + esc(m.mid || "—") + '</span>'
-    + '<span class="mid-who"><span class="mid-label">' + esc(m.label) + '</span>'
+    + '<span class="mid-num mono' + (m.mid ? '' : ' none') + '">' + esc(m.mid || t("midNoNumber")) + '</span>'
+    + '<span class="mid-who"><span class="mid-label">' + esc(m.label || t("midUnnamed")) + '</span>'
       + '<span class="mid-sub">' + esc(m.purpose || t("midNoPurpose")) + '</span></span>'
     + '<span class="mid-cnt">' + esc(plural(st.active, "midTerminal", "midTerminals")) + '</span>'
     + '<span class="mid-times' + (st.clash ? ' bad' : '') + '">'
@@ -716,12 +718,18 @@ function midCard(m){
 
   h += '<div class="mid-body">';
   if(st.clash) h += '<div class="flagnote">' + esc(t("midClash")) + '</div>';
-  if(st.sharedMid) h += '<div class="flagnote">' + esc(t("midShared")) + '</div>';
 
   if(editing){
-    h += '<div class="grid2">'
-      + fld("label", t("midLabel"), e.label) + fld("mid", t("midNumber"), e.mid, "mono")
+    /* Store, processor and POS are the account's identity; the name shown
+       everywhere is built from them, so there is nothing to keep in sync. */
+    h += '<div class="grid3">'
+      + storeSel(e.store_code)
+      + fld("processor", t("processorField"), e.processor)
+      + fld("pos", t("posField"), e.pos)
       + '</div>'
+      + '<div class="derived"><i>' + esc(t("midShownAs")) + '</i> <b>'
+        + esc([e.store_code, e.processor, e.pos].filter(Boolean).join(" · ") || t("midUnnamed")) + '</b></div>'
+      + fld("mid", t("midNumber"), e.mid, "mono")
       + fld("purpose", t("midPurpose"), e.purpose)
       + '<div class="grid2">'
       + fld("batch_close", t("midBatch"), e.batch_close, "", "time")
@@ -796,11 +804,31 @@ function midCard(m){
     });
     h += '</tbody></table></div>';
 
-    if(isAdmin()) h += '<div class="rowend"><button class="btn sm" data-act="editmid" data-mid="' + att(m.id) + '">'
-      + esc(t("midEdit")) + '</button></div>';
+    if(isAdmin()){
+      if(ui.newTerm && ui.newTerm.mid === m.id) h += newTerminalForm(m);
+      h += '<div class="rowend">'
+        + '<button class="btn sm" data-act="addterm" data-mid="' + att(m.id) + '">'
+          + esc(t("termAdd")) + '</button>'
+        + '<button class="btn sm" data-act="editmid" data-mid="' + att(m.id) + '">'
+          + esc(t("midEdit")) + '</button></div>';
+    }
   }
 
   return h + '</div></div>';
+}
+
+/* The store is a choice from the four that exist, plus the honest option of
+   not having decided yet. */
+function storeSel(val){
+  var h = '<div class="fld"><label>' + esc(t("store")) + '</label>'
+    + '<select data-midfld="store_code">'
+    + '<option value=""' + (!val ? " selected" : "") + '>' + esc(t("storeUnknown")) + '</option>';
+  for(var i=0;i<state.stores.length;i++){
+    var S = state.stores[i];
+    h += '<option value="' + att(S.code) + '"' + (val === S.code ? " selected" : "") + '>'
+      + esc(S.code) + ' · ' + esc(S.name) + '</option>';
+  }
+  return h + '</select></div>';
 }
 
 function fld(key, label, val, cls, type){
@@ -809,6 +837,59 @@ function fld(key, label, val, cls, type){
 }
 function fact(label, val, bad){
   return '<span class="fct' + (bad ? ' bad' : '') + '"><i>' + esc(label) + '</i><b>' + esc(val) + '</b></span>';
+}
+
+/* A terminal is only ever created here, against the account that settles it,
+   so the two can never come apart. Store, processor and POS are not asked for
+   — they are the account's, and showing them makes that inheritance obvious
+   instead of surprising. The id is issued by the database. */
+function newTerminalForm(m){
+  var d = ui.newTerm;
+  var inherit = [m.store || t("storeUnknown"), m.proc, m.pos].filter(Boolean).join(" · ");
+  var h = '<div class="newterm">'
+    + '<div class="nt-h">' + esc(t("termAddTo")) + ' <b>' + esc(m.label || t("midUnnamed")) + '</b></div>'
+    + '<div class="derived"><i>' + esc(t("termInherits")) + '</i> <b>' + esc(inherit) + '</b></div>'
+    + '<div class="grid2">'
+      + '<div class="fld req"><label>' + esc(t("termName")) + '</label>'
+        + '<input data-ntfld="name" value="' + att(d.name) + '" placeholder="' + att(t("termNameHint")) + '"></div>'
+      + '<div class="fld"><label>' + esc(t("model")) + '</label>'
+        + '<input data-ntfld="model" value="' + att(d.model) + '" placeholder="' + att(t("termModelHint")) + '"></div>'
+    + '</div>'
+    + '<div class="grid2">'
+      + '<div class="fld"><label>' + esc(t("purpose")) + '</label>'
+        + '<input data-ntfld="purpose" value="' + att(d.purpose) + '" placeholder="' + att(t("termPurposeHint")) + '"></div>'
+      + '<div class="fld"><label>' + esc(t("serial")) + '</label>'
+        + '<input class="mono" data-ntfld="serial" value="' + att(d.serial) + '"></div>'
+    + '</div>'
+    + '<div class="grid2">'
+      + '<div class="fld"><label>' + esc(t("ownership")) + '</label><select data-ntfld="ownership">'
+        + '<option value=""' + (!d.ownership ? " selected" : "") + '>' + esc(t("ownUnknown")) + '</option>'
+        + '<option value="owned"' + (d.ownership === "owned" ? " selected" : "") + '>' + esc(t("owned")) + '</option>'
+        + '<option value="rented"' + (d.ownership === "rented" ? " selected" : "") + '>' + esc(t("rented")) + '</option>'
+        + '</select></div>'
+      + '<div class="fld"><label>' + esc(t("rental")) + '</label>'
+        + '<input class="mono" data-ntfld="monthly_rental" value="' + att(d.monthly_rental) + '"></div>'
+    + '</div>';
+
+  h += '<div class="fld"><label>' + esc(t("termTests")) + '</label>'
+    + '<div class="presets">'
+      + '<button class="btn sm" data-act="ntpreset" data-v="all">' + esc(t("termPresetAll")) + '</button>'
+      + '<button class="btn sm" data-act="ntpreset" data-v="pay">' + esc(t("termPresetPay")) + '</button>'
+    + '</div><div class="testpick">';
+  for(var i=0;i<TESTS.length;i++){
+    var c = TESTS[i].code, on = d.tests.indexOf(c) >= 0;
+    h += '<label class="tpick' + (on ? " on" : "") + '">'
+      + '<input type="checkbox" data-nttest="' + att(c) + '"' + (on ? " checked" : "") + '>'
+      + esc(TESTS[i][ui.lang].n) + '</label>';
+  }
+  h += '</div></div>';
+
+  if(ui.newTermErr) h += '<div class="blockmsg">' + esc(ui.newTermErr) + '</div>';
+  return h + '<div class="rowend">'
+    + '<button class="btn primary" data-act="saveterm"' + (ui.newTermBusy ? ' disabled' : '') + '>'
+      + esc(ui.newTermBusy ? t("saving") : t("termCreate")) + '</button>'
+    + '<button class="btn ghost" data-act="cancelterm">' + esc(t("cancel")) + '</button>'
+    + '</div></div>';
 }
 
 function viewMids(){
@@ -825,14 +906,25 @@ function viewMids(){
     + '<div class="card kpi' + (unknown ? ' todo' : '') + '"><div class="n">' + unknown + '</div><div class="l eyebrow">' + esc(t("midUnknownOwn")) + '</div></div>'
     + '</div>';
 
+  if(isAdmin()) h += '<div class="rowend"><button class="btn primary" data-act="newmid">'
+    + esc(t("midNew")) + '</button></div>';
+
   var byStore = {};
-  list.forEach(function(m){ (byStore[m.store] = byStore[m.store] || []).push(m); });
-  state.stores.forEach(function(S){
-    var group = byStore[S.code];
-    if(!group || !group.length) return;
-    h += '<section><div class="sec-h"><h2>' + esc(S.code) + ' · ' + esc(S.name) + '</h2></div>'
-      + '<div class="devlist">';
-    group.forEach(function(m){ h += midCard(m); });
+  list.forEach(function(m){ (byStore[m.store || ""] = byStore[m.store || ""] || []).push(m); });
+
+  var groups = state.stores.map(function(S){
+    return { title: S.code + " · " + S.name, rows: byStore[S.code] };
+  });
+  /* Accounts nobody has placed yet go last, named for what they are rather
+     than hidden — an account with no store is a job to finish, not an error. */
+  groups.push({ title: t("storeUnknown"), rows: byStore[""], unknown: true });
+
+  groups.forEach(function(g){
+    if(!g.rows || !g.rows.length) return;
+    h += '<section><div class="sec-h"><h2' + (g.unknown ? ' class="dim"' : '') + '>' + esc(g.title) + '</h2>'
+      + (g.unknown ? '<span class="sec-note">' + esc(t("storeUnknownNote")) + '</span>' : '')
+      + '</div><div class="devlist">';
+    g.rows.forEach(function(m){ h += midCard(m); });
     h += '</div></section>';
   });
   return h + '</div>';
@@ -1033,19 +1125,39 @@ var EXTRA = {
     act_ownership: "ownership set",
     act_device_edit: "device updated",
     serialAdd: "not recorded",
+    midShownAs: "Shown everywhere as",
+    midUnnamed: "Unnamed account",
+    midNoNumber: "no MID",
+    midNew: "New merchant account",
+    midTaken: "That MID is already on another account. A MID belongs to one account only.",
+    processorField: "Payment processor",
+    posField: "POS / software",
+    store: "Store",
+    storeUnknown: "Unknown",
+    storeUnknownNote: "No store assigned yet",
+    termAdd: "Add a terminal",
+    termAddTo: "New terminal on",
+    termInherits: "Inherits",
+    termName: "What it is called",
+    termNameHint: "Bar Terminal 03",
+    termModelHint: "Go Plus, LANE3600, P400\u2026",
+    termPurposeHint: "Bar, Front counter, Kiosk\u2026",
+    termTests: "Which tests apply",
+    termPresetAll: "Counter / bar \u2014 all six",
+    termPresetPay: "Kiosk / teller \u2014 payments only",
+    termCreate: "Create the terminal",
+    termNeedsName: "Give it a name.",
     nav_mids: "Merchant accounts",
     midAccounts: "Merchant accounts",
     midTerminals: "terminals",
     midTerminal: "terminal",
     midNone: "No merchant account on file yet.",
     midNoPurpose: "No purpose recorded",
-    midLabel: "Name",
     midNumber: "MID",
     midPurpose: "What this account is for",
     midBatch: "Batch close (processor)",
     midZout: "Z-out (POS)",
     midClash: "The processor closes its batch at a different time than the POS runs its Z-out. Anything rung between the two settles on one day and reports on the other.",
-    midShared: "This MID is on more than one account. One of them is wrong \u2014 a terminal cannot sit on another processor's merchant account.",
     midClashes: "Time mismatches",
     midUnknownOwn: "Ownership unknown",
     midPhone: "Support phone",
@@ -1056,7 +1168,6 @@ var EXTRA = {
     midFee: "Account fee / month",
     midNotes: "Notes",
     midEdit: "Edit this account",
-    midNeedsMid: "An account needs its MID.",
     owned: "Owned",
     rented: "Rented",
     ownUnknown: "Unknown",
@@ -1112,19 +1223,39 @@ var EXTRA = {
     act_ownership: "propriété définie",
     act_device_edit: "terminal mis à jour",
     serialAdd: "non inscrit",
+    midShownAs: "Affiché partout comme",
+    midUnnamed: "Compte sans nom",
+    midNoNumber: "aucun MID",
+    midNew: "Nouveau compte marchand",
+    midTaken: "Ce MID est déjà sur un autre compte. Un MID appartient à un seul compte.",
+    processorField: "Processeur de paiement",
+    posField: "PDV / logiciel",
+    store: "Succursale",
+    storeUnknown: "Inconnue",
+    storeUnknownNote: "Aucune succursale assignée",
+    termAdd: "Ajouter un terminal",
+    termAddTo: "Nouveau terminal sur",
+    termInherits: "Hérite de",
+    termName: "Son nom",
+    termNameHint: "Terminal Bar 03",
+    termModelHint: "Go Plus, LANE3600, P400\u2026",
+    termPurposeHint: "Bar, Comptoir, Borne\u2026",
+    termTests: "Tests applicables",
+    termPresetAll: "Comptoir / bar \u2014 les six",
+    termPresetPay: "Borne / guichet \u2014 paiements seulement",
+    termCreate: "Créer le terminal",
+    termNeedsName: "Donnez-lui un nom.",
     nav_mids: "Comptes marchands",
     midAccounts: "Comptes marchands",
     midTerminals: "terminaux",
     midTerminal: "terminal",
     midNone: "Aucun compte marchand au dossier.",
     midNoPurpose: "Aucune utilité inscrite",
-    midLabel: "Nom",
     midNumber: "MID",
     midPurpose: "À quoi sert ce compte",
     midBatch: "Fermeture de lot (processeur)",
     midZout: "Z-out (PDV)",
     midClash: "Le processeur ferme son lot à une heure différente du Z-out du PDV. Toute vente passée entre les deux est déposée un jour et rapportée l\u2019autre.",
-    midShared: "Ce MID est sur plus d\u2019un compte. L\u2019un des deux est faux \u2014 un terminal ne peut pas être sur le compte marchand d\u2019un autre processeur.",
     midClashes: "Heures qui ne concordent pas",
     midUnknownOwn: "Propriété inconnue",
     midPhone: "Téléphone du soutien",
@@ -1135,7 +1266,6 @@ var EXTRA = {
     midFee: "Frais du compte / mois",
     midNotes: "Notes",
     midEdit: "Modifier ce compte",
-    midNeedsMid: "Un compte doit avoir son MID.",
     owned: "Acheté",
     rented: "Loué",
     ownUnknown: "Inconnu",
@@ -1518,6 +1648,44 @@ document.addEventListener("click", function (ev) {
     ui.midErr = ""; render(); return;
   }
   if (a === "cancelmid") { ui.midEdit = null; ui.midErr = ""; render(); return; }
+  if (a === "newmid") {
+    if (!isAdmin()) return;
+    setSave("busy", t("saving"));
+    api.newMerchant(tester()).then(function (out) {
+      setSave("ok", t("saved"));
+      return refresh().then(function () {
+        /* Land on the new one, already open and in edit, because a blank
+           account is useless until somebody fills it in. */
+        var id = out && out.merchant && out.merchant.id;
+        if (id) {
+          ui.openMid = id;
+          ui.midEdit = { id: id, store_code: "", processor: "", pos: "", mid: "",
+            purpose: "", batch_close: "", pos_zout: "", support_phone: "",
+            support_email: "", account_rep: "", portal_url: "", monthly_fee: "", notes: "" };
+        }
+        render();
+      });
+    }).then(function () {
+      setTimeout(function () { if (ui.saveState === "ok") setSave("", ""); }, 2600);
+    }).catch(function (err) { setSave("err", errText(err)); });
+    return;
+  }
+  if (a === "addterm") {
+    if (!isAdmin()) return;
+    ui.newTerm = { mid: el.getAttribute("data-mid"), name: "", model: "", purpose: "",
+      serial: "", ownership: "", monthly_rental: "",
+      tests: TESTS.map(function (x) { return x.code; }) };
+    ui.newTermErr = ""; render(); return;
+  }
+  if (a === "cancelterm") { ui.newTerm = null; ui.newTermErr = ""; render(); return; }
+  if (a === "ntpreset") {
+    if (!ui.newTerm) return;
+    ui.newTerm.tests = el.getAttribute("data-v") === "pay"
+      ? ["AMEX-PAY", "INT-PAY"]
+      : TESTS.map(function (x) { return x.code; });
+    render(); return;
+  }
+  if (a === "saveterm") { saveNewTerminal(); return; }
   if (a === "savemid") { saveMid(); return; }
   if (a === "archive") {
     if (!isAdmin()) return;
@@ -1576,14 +1744,45 @@ document.addEventListener("click", function (ev) {
   }
 });
 
+/* Keeps the "shown everywhere as" line honest while someone types, without a
+   re-render — the caret stays put and no button is pulled out from under a
+   click already in flight. */
+function paintDerived() {
+  var e = ui.midEdit;
+  if (!e) return;
+  var el = document.querySelector(".mid-body .derived b");
+  if (!el) return;
+  el.textContent = [e.store_code, e.processor, e.pos].filter(Boolean).join(" · ") || t("midUnnamed");
+}
+
+function saveNewTerminal() {
+  var d = ui.newTerm;
+  if (!d || ui.newTermBusy) return;
+  if (!String(d.name).trim()) { ui.newTermErr = t("termNeedsName"); render(); return; }
+  ui.newTermBusy = true; ui.newTermErr = ""; setSave("busy", t("saving")); render();
+  api.newTerminal(d.mid, {
+    name: String(d.name).trim(), model: d.model, purpose: d.purpose, serial: d.serial,
+    ownership: d.ownership, monthly_rental: d.monthly_rental, tests: d.tests,
+  }, tester()).then(function () {
+    ui.newTermBusy = false; ui.newTerm = null;
+    setSave("ok", t("saved"));
+    return refresh();
+  }).then(function () {
+    setTimeout(function () { if (ui.saveState === "ok") setSave("", ""); }, 2600);
+  }).catch(function (err) {
+    ui.newTermBusy = false;
+    ui.newTermErr = errText(err);
+    setSave("err", t("saveErr")); render();
+  });
+}
+
 function saveMid() {
   var d = ui.midEdit;
   if (!d || ui.midSaving) return;
   var patch = {};
-  ["label", "mid", "purpose", "batch_close", "pos_zout", "support_phone",
-   "support_email", "account_rep", "portal_url", "monthly_fee", "notes"]
+  ["store_code", "processor", "pos", "mid", "purpose", "batch_close", "pos_zout",
+   "support_phone", "support_email", "account_rep", "portal_url", "monthly_fee", "notes"]
     .forEach(function (k) { patch[k] = d[k] == null ? "" : String(d[k]).trim(); });
-  if (!patch.mid) { ui.midErr = t("midNeedsMid"); render(); return; }
 
   ui.midSaving = true; ui.midErr = ""; setSave("busy", t("saving")); render();
   api.saveMerchant(d.id, patch, tester()).then(function () {
@@ -1594,7 +1793,8 @@ function saveMid() {
     setTimeout(function () { if (ui.saveState === "ok") setSave("", ""); }, 2600);
   }).catch(function (err) {
     ui.midSaving = false;
-    ui.midErr = err.code === "admin_only" ? t("adminOnly") : errText(err);
+    ui.midErr = err.code === "mid_taken" ? t("midTaken")
+      : err.code === "admin_only" ? t("adminOnly") : errText(err);
     setSave("err", t("saveErr")); render();
   });
 }
@@ -1637,7 +1837,12 @@ document.addEventListener("input", function (ev) {
   /* The merchant editor names its inputs after the server's columns, so it has
      its own attribute and has to be read before the data-fld gate below. */
   var mf = el.getAttribute && el.getAttribute("data-midfld");
-  if (mf) { if (ui.midEdit) ui.midEdit[mf] = el.value; return; }
+  if (mf) {
+    if (ui.midEdit) { ui.midEdit[mf] = el.value; paintDerived(); }
+    return;
+  }
+  var nf = el.getAttribute && el.getAttribute("data-ntfld");
+  if (nf) { if (ui.newTerm) ui.newTerm[nf] = el.value; return; }
   var f = el.getAttribute && el.getAttribute("data-fld");
   if (!f) return;
   if (f === "q") {
@@ -1659,6 +1864,21 @@ document.addEventListener("change", function (ev) {
     pickProof(bits[0], bits[1], el.files && el.files[0]);
     return;
   }
+  var ntt = el.getAttribute && el.getAttribute("data-nttest");
+  if (ntt && ui.newTerm) {
+    var at = ui.newTerm.tests.indexOf(ntt);
+    if (el.checked && at < 0) ui.newTerm.tests.push(ntt);
+    if (!el.checked && at >= 0) ui.newTerm.tests.splice(at, 1);
+    render(); return;
+  }
+  /* A text input also fires change on blur — and blur is what happens when
+     someone clicks Save. Re-rendering there would detach the button mid-click,
+     so only a dropdown redraws; text is already captured on input. */
+  var isSelect = el.tagName === "SELECT";
+  var nsel = el.getAttribute && el.getAttribute("data-ntfld");
+  if (nsel && ui.newTerm) { ui.newTerm[nsel] = el.value; if (isSelect) render(); return; }
+  var msel = el.getAttribute && el.getAttribute("data-midfld");
+  if (msel && ui.midEdit) { ui.midEdit[msel] = el.value; if (isSelect) paintDerived(); return; }
   var ow = el.getAttribute && el.getAttribute("data-own");
   if (ow) { saveDevice(ow, { ownership: el.value }); return; }
   var f = el.getAttribute && el.getAttribute("data-fld");

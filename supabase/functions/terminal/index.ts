@@ -3,6 +3,8 @@
 //   archive  { terminal_id, active, reason, actor }  archive or restore
 //   merchant { merchant_id, patch, actor }           edit a merchant account
 //   device   { terminal_id, fields: { ownership, monthly_rental, serial }, actor }
+//   new_merchant  { actor }                          open a blank account
+//   new_terminal  { merchant_id, terminal, actor }   add a box to an account
 //
 // One function rather than three because every one of these is the same
 // decision — head office changing a fact about the fleet — and each new Edge
@@ -14,7 +16,8 @@
 // results stay on the row, and the change is written to the audit log with the
 // person who made it, so an archived terminal is a decision with a name on it.
 import { currentCycle, terminalRef, setTerminalActive, setMerchantAccount,
-         setTerminalFields, logAudit } from "../_shared/db.ts";
+         setTerminalFields, createMerchantAccount, createTerminal,
+         logAudit } from "../_shared/db.ts";
 import { bearer, verify, isAdmin } from "../_shared/session.ts";
 import { json, preflight } from "../_shared/cors.ts";
 
@@ -34,12 +37,65 @@ Deno.serve(async (req) => {
   const action = String(b.action ?? "archive");
   const cycleNow = await currentCycle();
 
+  if (action === "new_merchant") {
+    try {
+      const row = await createMerchantAccount() as Record<string, unknown>;
+      await logAudit({
+        cycle_id: cycleNow?.id ?? "", terminal_id: "", test_code: "", store_code: "",
+        action: "merchant_new", result: null,
+        actor: String(b.actor ?? "").trim() || "head office",
+        detail: String(row.id ?? ""),
+      });
+      return json({ ok: true, merchant: row }, 200, origin);
+    } catch (e) {
+      console.error("merchant create failed", String(e));
+      return json({ error: "server_error" }, 500, origin);
+    }
+  }
+
+  if (action === "new_terminal") {
+    const merchantId = String(b.merchant_id ?? "");
+    const t = (b.terminal ?? {}) as Record<string, unknown>;
+    const name = String(t.name ?? "").trim();
+    if (!merchantId) return json({ error: "merchant_id_required" }, 400, origin);
+    if (!name) return json({ error: "name_required" }, 400, origin);
+
+    const rentRaw = t.monthly_rental;
+    const rent = rentRaw === "" || rentRaw == null ? null : Number(rentRaw);
+    if (rent !== null && !Number.isFinite(rent)) return json({ error: "bad_rental" }, 400, origin);
+
+    const tests = Array.isArray(t.tests) ? t.tests.map(String).filter(Boolean) : [];
+
+    try {
+      const row = await createTerminal(merchantId, {
+        name,
+        model: String(t.model ?? "").trim() || null,
+        purpose: String(t.purpose ?? "").trim() || null,
+        serial: String(t.serial ?? "").trim().slice(0, 64) || null,
+        tests,
+        ownership: t.ownership === "owned" || t.ownership === "rented" ? String(t.ownership) : null,
+        monthly_rental: rent,
+      }) as Record<string, unknown> | null;
+      if (!row) return json({ error: "unknown_merchant" }, 404, origin);
+      await logAudit({
+        cycle_id: cycleNow?.id ?? "", terminal_id: String(row.id ?? ""), test_code: "",
+        store_code: String(row.store_code ?? ""), action: "terminal_new", result: null,
+        actor: String(b.actor ?? "").trim() || "head office",
+        detail: `${row.name ?? name} on ${merchantId}`,
+      });
+      return json({ ok: true, terminal: row }, 200, origin);
+    } catch (e) {
+      console.error("terminal create failed", String(e));
+      return json({ error: "server_error" }, 500, origin);
+    }
+  }
+
   if (action === "merchant") {
     const merchantId = String(b.merchant_id ?? "");
     const patch = (b.patch ?? {}) as Record<string, unknown>;
     if (!merchantId) return json({ error: "merchant_id_required" }, 400, origin);
     try {
-      const row = await setMerchantAccount(merchantId, patch);
+      const row = await setMerchantAccount(merchantId, patch) as Record<string, unknown> | null;
       if (!row) return json({ error: "nothing_to_change" }, 400, origin);
       await logAudit({
         cycle_id: cycleNow?.id ?? "", terminal_id: "", test_code: "",
@@ -49,6 +105,10 @@ Deno.serve(async (req) => {
       });
       return json({ ok: true, merchant: row }, 200, origin);
     } catch (e) {
+      // A MID already on another account is the caller's mistake, not a fault.
+      if (e instanceof Error && e.message === "mid_taken") {
+        return json({ error: "mid_taken" }, 409, origin);
+      }
       console.error("merchant edit failed", String(e));
       return json({ error: "server_error" }, 500, origin);
     }

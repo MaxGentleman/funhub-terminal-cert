@@ -106,12 +106,23 @@ export async function merchantAccounts(scope: string | null) {
   });
 }
 
-/** The columns head office may change. Anything else in the body is ignored. */
+/**
+ * The columns head office may change. `label` is not among them: an account is
+ * identified by three structured facts — which store, whose processor, which
+ * POS — and the name is composed from them, so it can never describe something
+ * the account is not.
+ */
 const MERCHANT_FIELDS = [
-  "mid", "label", "purpose", "batch_close", "pos_zout",
+  "mid", "store_code", "processor", "pos", "purpose", "batch_close", "pos_zout",
   "support_phone", "support_email", "account_rep", "portal_url",
   "monthly_fee", "notes",
 ] as const;
+
+/** A MID belongs to one account. Postgres enforces it; this names the failure. */
+const MID_TAKEN = "mid_taken";
+function isUniqueViolation(e: unknown) {
+  return !!e && typeof e === "object" && (e as { code?: string }).code === "23505";
+}
 
 export async function setMerchantAccount(id: string, patch: Record<string, unknown>) {
   const clean: Record<string, unknown> = {};
@@ -123,10 +134,67 @@ export async function setMerchantAccount(id: string, patch: Record<string, unkno
   }
   if (!Object.keys(clean).length) return null;
   clean.updated_at = new Date().toISOString();
+  try {
+    const row = one(await sql`
+      update cert.merchant_accounts set ${sql(clean)}
+       where id = ${id}
+       returning *`);
+    if (row) await relabel(id);
+    return row ? await merchantById(id) : null;
+  } catch (e) {
+    if (isUniqueViolation(e)) throw new Error(MID_TAKEN);
+    throw e;
+  }
+}
+
+/** The displayed name, recomputed from the three facts that define the account. */
+async function relabel(id: string) {
+  await sql`
+    update cert.merchant_accounts
+       set label = nullif(concat_ws(' · ', store_code, processor, pos), '')
+     where id = ${id}`;
+}
+
+export async function merchantById(id: string) {
+  return one(await sql`select * from cert.merchant_accounts where id = ${id}`);
+}
+
+/** A blank account to be filled in. Everything about it is optional at birth. */
+export async function createMerchantAccount() {
+  const id = "acct-" + crypto.randomUUID().slice(0, 8);
   return one(await sql`
-    update cert.merchant_accounts set ${sql(clean)}
-     where id = ${id}
-     returning *`);
+    insert into cert.merchant_accounts (id, mid, store_code, processor, pos, label)
+    values (${id}, null, null, null, null, null)
+    returning *`);
+}
+
+/**
+ * A terminal is created against an account, never on its own, so the link
+ * between a box and the merchant account that settles it exists from the first
+ * moment and cannot be forgotten. Store, processor and POS are inherited from
+ * the account rather than retyped — that is the whole reason creation lives
+ * there. The id is issued by the database, never typed.
+ */
+export async function createTerminal(accountId: string, t: {
+  name: string; model: string | null; purpose: string | null;
+  serial: string | null; tests: string[];
+  ownership: string | null; monthly_rental: number | null;
+}) {
+  const acct = await merchantById(accountId) as Record<string, unknown> | null;
+  if (!acct) return null;
+  const rows = await sql<{ id: string }[]>`
+    select cert.next_terminal_id(${(acct.store_code as string) ?? null}) as id`;
+  const id = rows[0].id;
+  return one(await sql`
+    insert into cert.terminals
+      (id, store_code, name, processor, model, mid, serial, purpose, pos,
+       merchant_account_id, ownership, monthly_rental, tests, flag, active)
+    values
+      (${id}, ${(acct.store_code as string) ?? null}, ${t.name},
+       ${(acct.processor as string) ?? null}, ${t.model}, ${(acct.mid as string) ?? null},
+       ${t.serial}, ${t.purpose}, ${(acct.pos as string) ?? null},
+       ${accountId}, ${t.ownership}, ${t.monthly_rental}, ${t.tests}, '', true)
+    returning *`);
 }
 
 /**

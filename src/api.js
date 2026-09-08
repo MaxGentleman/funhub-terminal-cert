@@ -101,6 +101,18 @@ export function saveMerchant(merchantId, patch, actor) {
   });
 }
 
+/** Open a blank merchant account for head office to fill in. */
+export function newMerchant(actor) {
+  return call("terminal", { body: { action: "new_merchant", actor: actor || "" } });
+}
+
+/** Add a terminal to an account. Store, processor and POS come from it. */
+export function newTerminal(merchantId, terminal, actor) {
+  return call("terminal", {
+    body: { action: "new_terminal", merchant_id: merchantId, terminal: terminal, actor: actor || "" },
+  });
+}
+
 /**
  * The facts about a physical box: whose it is, what it costs, its serial.
  * Only the keys passed are touched, so two people editing different columns of
