@@ -1,7 +1,7 @@
 // GET -> everything the signed-in scope may see.
 // A store code sees its own store and nothing else — not other stores'
 // terminals, not their results. Head office sees everything.
-import { currentCycle, terminals, testFolders, results, auditLog } from "../_shared/db.ts";
+import { currentCycle, terminals, testFolders, results, auditLog, merchantAccounts } from "../_shared/db.ts";
 import { bearer, verify, isAdmin } from "../_shared/session.ts";
 import { json, preflight } from "../_shared/cors.ts";
 
@@ -22,11 +22,12 @@ Deno.serve(async (req) => {
 
     // Archived terminals go to head office only, so they can be seen and put
     // back. A store's register never mentions a terminal it does not have.
-    const [terms, folderRows, rows, audit] = await Promise.all([
+    const [terms, folderRows, rows, audit, merchants] = await Promise.all([
       terminals(only, admin),
       testFolders(),
       results(cycle.id, only),
       admin ? auditLog(cycle.id, null) : Promise.resolve([]),
+      merchantAccounts(only),
     ]);
 
     const folders: Record<string, Record<string, string>> = {};
@@ -34,7 +35,7 @@ Deno.serve(async (req) => {
       (folders[f.terminal_id] ??= {})[f.test_code] = f.drive_folder_id;
     }
 
-    return json({ scope, cycle, terminals: terms, folders, results: rows, audit }, 200, origin);
+    return json({ scope, cycle, terminals: terms, folders, results: rows, audit, merchants }, 200, origin);
   } catch (e) {
     console.error("data load failed", String(e));
     return json({ error: "server_error" }, 500, origin);

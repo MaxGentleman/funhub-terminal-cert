@@ -26,6 +26,7 @@ function emptyState() {
     cycle: { id: "", label: "—", startISO: "", expiryISO: "", driveId: ROOT_DRIVE },
     stores: STORES,
     devices: [],
+    merchants: [],
     results: {},
     log: [],
     archives: [],
@@ -78,6 +79,9 @@ function applyData(p) {
       tests: r.tests || [], flag: r.flag || "",
       /* Absent on older payloads; a terminal with no opinion is in service. */
       active: r.active !== false,
+      midId: r.merchant_account_id || "",
+      ownership: r.ownership || "",
+      rental: r.monthly_rental == null ? "" : String(r.monthly_rental),
     };
   });
 
@@ -88,6 +92,20 @@ function applyData(p) {
       at: r.recorded_at, proof: true, file: r.proof_filename || "",
       path: r.proof_path || "", driveId: r.drive_file_id || "",
       driveErr: r.drive_error || "",
+    };
+  });
+
+  s.merchants = (p.merchants || []).map(function (m) {
+    return {
+      id: m.id, mid: m.mid || "", store: m.store_code, proc: m.processor, pos: m.pos,
+      label: m.label || "", purpose: m.purpose || "",
+      batch: hhmm(m.batch_close), zout: hhmm(m.pos_zout),
+      phone: m.support_phone || "", email: m.support_email || "",
+      rep: m.account_rep || "", portal: m.portal_url || "",
+      fee: m.monthly_fee == null ? "" : String(m.monthly_fee),
+      notes: m.notes || "",
+      /* A store scope is not sent fee/rep/notes at all, so it cannot show them. */
+      full: Object.prototype.hasOwnProperty.call(m, "monthly_fee"),
     };
   });
 
@@ -193,6 +211,38 @@ function fmtDT(iso){
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 function proofName(devId,code,name){ return devId+"_"+code+"_"+todayISO()+"_"+initials(name||tester())+".pdf"; }
 function testFolder(d,code){ return (d.testDrive && d.testDrive[code]) || d.drive; }
+
+/* Postgres hands back a time as HH:MM:SS; an <input type=time> speaks HH:MM.
+   Everything downstream compares and prints the short form. */
+function hhmm(v){ return v ? String(v).slice(0,5) : ""; }
+/** "1 terminals" reads like a bug, so the count picks its own noun. */
+function plural(n, one, many){ return n + " " + t(n === 1 ? one : many); }
+function money(v){
+  var n = Number(v);
+  return (v === "" || v == null || !isFinite(n)) ? "" : "$" + n.toFixed(2).replace(/\.00$/, "");
+}
+
+/* What a merchant account actually costs and carries. Terminals are counted
+   from the register rather than stored on the account, so the number cannot
+   drift away from the fleet it describes. */
+function midStats(m){
+  var list = state.devices.filter(function(d){ return d.midId === m.id; });
+  var o = { terminals:0, active:0, archived:0, owned:0, rented:0, unknown:0, rental:0 };
+  list.forEach(function(d){
+    o.terminals++;
+    if(d.active === false) o.archived++; else o.active++;
+    if(d.ownership === "owned") o.owned++;
+    else if(d.ownership === "rented"){ o.rented++; o.rental += Number(d.rental) || 0; }
+    else o.unknown++;
+  });
+  o.list = list;
+  o.monthly = o.rental + (Number(m.fee) || 0);
+  /* Both clocks set and disagreeing is the thing worth shouting about: a sale
+     rung between them settles on one day and reports on another. */
+  o.clash = !!(m.batch && m.zout && m.batch !== m.zout);
+  o.sharedMid = state.merchants.filter(function(x){ return x.mid && x.mid === m.mid; }).length > 1;
+  return o;
+}
 
 /* An archived terminal is not a terminal any more. Every number on this page —
    the KPIs, a store's percentage, the failure ranking, what still needs
@@ -641,6 +691,148 @@ function viewDevices(){
   return h;
 }
 
+/* --------------------------------------------------------- merchant accounts
+   A MID is the thing a processor bills, settles and supports, and until it had
+   a page of its own nobody could answer "what is this account for and what is
+   on it" without opening three systems. One card per account; the terminal
+   counts are read off the register, so they cannot drift from the fleet. */
+function midCard(m){
+  var st = midStats(m), open = ui.openMid === m.id, editing = open && ui.midEdit && ui.midEdit.id === m.id;
+  var e = ui.midEdit || {};
+  var h = '<div class="card mid' + (st.clash ? ' clash' : '') + '">';
+
+  h += '<button class="mid-h" data-act="togglemid" data-mid="' + att(m.id) + '" aria-expanded="' + open + '">'
+    + '<span class="mid-num mono">' + esc(m.mid || "—") + '</span>'
+    + '<span class="mid-who"><span class="mid-label">' + esc(m.label) + '</span>'
+      + '<span class="mid-sub">' + esc(m.purpose || t("midNoPurpose")) + '</span></span>'
+    + '<span class="mid-cnt">' + esc(plural(st.active, "midTerminal", "midTerminals")) + '</span>'
+    + '<span class="mid-times' + (st.clash ? ' bad' : '') + '">'
+      + '<i>' + esc(m.batch || "—") + '</i><span class="sl">/</span><i>' + esc(m.zout || "—") + '</i></span>'
+    + '<span class="caret">' + (open ? "▾" : "▸") + '</span></button>';
+
+  if(!open) return h + '</div>';
+
+  h += '<div class="mid-body">';
+  if(st.clash) h += '<div class="flagnote">' + esc(t("midClash")) + '</div>';
+  if(st.sharedMid) h += '<div class="flagnote">' + esc(t("midShared")) + '</div>';
+
+  if(editing){
+    h += '<div class="grid2">'
+      + fld("label", t("midLabel"), e.label) + fld("mid", t("midNumber"), e.mid, "mono")
+      + '</div>'
+      + fld("purpose", t("midPurpose"), e.purpose)
+      + '<div class="grid2">'
+      + fld("batch_close", t("midBatch"), e.batch_close, "", "time")
+      + fld("pos_zout", t("midZout"), e.pos_zout, "", "time")
+      + '</div>'
+      + '<div class="grid2">'
+      + fld("support_phone", t("midPhone"), e.support_phone)
+      + fld("support_email", t("midEmail"), e.support_email)
+      + '</div>'
+      + '<div class="grid2">'
+      + fld("account_rep", t("midRep"), e.account_rep)
+      + fld("monthly_fee", t("midFee"), e.monthly_fee, "mono")
+      + '</div>'
+      + fld("portal_url", t("midPortal"), e.portal_url, "mono")
+      + '<div class="fld"><label>' + esc(t("midNotes")) + '</label>'
+      + '<textarea data-midfld="notes">' + esc(e.notes || "") + '</textarea></div>'
+      + (ui.midErr ? '<div class="blockmsg">' + esc(ui.midErr) + '</div>' : '')
+      + '<div class="rowend">'
+      + '<button class="btn primary" data-act="savemid"' + (ui.midSaving ? ' disabled' : '') + '>'
+        + esc(ui.midSaving ? t("saving") : t("save")) + '</button>'
+      + '<button class="btn ghost" data-act="cancelmid">' + esc(t("cancel")) + '</button>'
+      + '</div>';
+  } else {
+    h += '<div class="mid-facts">'
+      + fact(t("midBatch"), m.batch || "—", st.clash)
+      + fact(t("midZout"), m.zout || "—", st.clash)
+      + fact(t("processor"), m.proc)
+      + fact(t("pos"), m.pos)
+      + (m.phone ? fact(t("midPhone"), m.phone) : "")
+      + (m.email ? fact(t("midEmail"), m.email) : "")
+      + (m.full && m.rep ? fact(t("midRep"), m.rep) : "")
+      + (m.full && m.fee ? fact(t("midFee"), money(m.fee) + t("perMonth")) : "")
+      + '</div>';
+    if(m.portal) h += '<div class="mid-portal"><a class="btn sm" href="' + att(m.portal) + '" target="_blank" rel="noopener">' + esc(t("midOpenPortal")) + ' ↗</a></div>';
+    if(m.full && m.notes) h += '<div class="mid-notes">' + esc(m.notes) + '</div>';
+
+    h += '<div class="mid-roll">'
+      + '<span>' + esc(plural(st.terminals, "midTerminal", "midTerminals")) + '</span>'
+      + '<span><b>' + st.owned + '</b> ' + esc(t("owned")) + '</span>'
+      + '<span><b>' + st.rented + '</b> ' + esc(t("rented")) + '</span>'
+      + (st.unknown ? '<span class="warnpill"><b>' + st.unknown + '</b> ' + esc(t("ownUnknown")) + '</span>' : '')
+      + (st.archived ? '<span class="dim"><b>' + st.archived + '</b> ' + esc(t("archivedShort")) + '</span>' : '')
+      + (m.full && st.monthly ? '<span class="mid-total">' + esc(money(st.monthly)) + esc(t("perMonth")) + '</span>' : '')
+      + '</div>';
+
+    h += '<div class="mid-terms"><table><thead><tr>'
+      + '<th>' + esc(t("log_dev")) + '</th><th>' + esc(t("model")) + '</th>'
+      + '<th>' + esc(t("purpose")) + '</th><th>' + esc(t("ownership")) + '</th>'
+      + (m.full ? '<th>' + esc(t("rental")) + '</th>' : '') + '</tr></thead><tbody>';
+    st.list.forEach(function(d){
+      var own = d.ownership
+        ? '<span class="ownpill ' + att(d.ownership) + '">' + esc(t(d.ownership)) + '</span>'
+        : '<span class="ownpill none">' + esc(t("ownUnknown")) + '</span>';
+      h += '<tr' + (d.active === false ? ' class="offrow"' : '') + '>'
+        + '<td class="m">' + esc(d.id) + ' · ' + esc(d.name) + (d.active === false ? ' <span class="dim">(' + esc(t("archivedPill")) + ')</span>' : '') + '</td>'
+        + '<td class="m">' + esc(d.proc) + ' ' + esc(d.model) + '</td>'
+        + '<td>' + esc(d.purpose) + '</td>'
+        + '<td>' + (isAdmin()
+            ? '<select data-own="' + att(d.id) + '">'
+              + '<option value=""' + (!d.ownership ? " selected" : "") + '>' + esc(t("ownUnknown")) + '</option>'
+              + '<option value="owned"' + (d.ownership === "owned" ? " selected" : "") + '>' + esc(t("owned")) + '</option>'
+              + '<option value="rented"' + (d.ownership === "rented" ? " selected" : "") + '>' + esc(t("rented")) + '</option>'
+              + '</select>'
+            : own) + '</td>'
+        + (m.full ? '<td>' + (isAdmin()
+            ? '<input class="rentbox mono" data-rent="' + att(d.id) + '" value="' + att(d.rental) + '" placeholder="—">'
+            : (d.rental ? esc(money(d.rental)) : '<span class="dim">—</span>')) + '</td>' : '')
+        + '</tr>';
+    });
+    h += '</tbody></table></div>';
+
+    if(isAdmin()) h += '<div class="rowend"><button class="btn sm" data-act="editmid" data-mid="' + att(m.id) + '">'
+      + esc(t("midEdit")) + '</button></div>';
+  }
+
+  return h + '</div></div>';
+}
+
+function fld(key, label, val, cls, type){
+  return '<div class="fld"><label>' + esc(label) + '</label>'
+    + '<input type="' + (type || "text") + '" class="' + (cls || "") + '" data-midfld="' + att(key) + '" value="' + att(val == null ? "" : val) + '"></div>';
+}
+function fact(label, val, bad){
+  return '<span class="fct' + (bad ? ' bad' : '') + '"><i>' + esc(label) + '</i><b>' + esc(val) + '</b></span>';
+}
+
+function viewMids(){
+  var h = '<div class="stack">' + cycleBar();
+  var list = state.merchants.slice();
+  if(!list.length) return h + '<div class="card"><div class="empty">' + esc(t("midNone")) + '</div></div></div>';
+
+  var unknown = 0, clash = 0;
+  list.forEach(function(m){ var s2 = midStats(m); unknown += s2.unknown; if(s2.clash) clash++; });
+  h += '<div class="kpis">'
+    + '<div class="card kpi"><div class="n">' + list.length + '</div><div class="l eyebrow">' + esc(t("midAccounts")) + '</div></div>'
+    + '<div class="card kpi"><div class="n">' + state.devices.filter(function(d){ return d.active !== false; }).length + '</div><div class="l eyebrow">' + esc(t("k_devices")) + '</div></div>'
+    + '<div class="card kpi' + (clash ? ' fail' : '') + '"><div class="n">' + clash + '</div><div class="l eyebrow">' + esc(t("midClashes")) + '</div></div>'
+    + '<div class="card kpi' + (unknown ? ' todo' : '') + '"><div class="n">' + unknown + '</div><div class="l eyebrow">' + esc(t("midUnknownOwn")) + '</div></div>'
+    + '</div>';
+
+  var byStore = {};
+  list.forEach(function(m){ (byStore[m.store] = byStore[m.store] || []).push(m); });
+  state.stores.forEach(function(S){
+    var group = byStore[S.code];
+    if(!group || !group.length) return;
+    h += '<section><div class="sec-h"><h2>' + esc(S.code) + ' · ' + esc(S.name) + '</h2></div>'
+      + '<div class="devlist">';
+    group.forEach(function(m){ h += midCard(m); });
+    h += '</div></section>';
+  });
+  return h + '</div>';
+}
+
 /* ---------------------------------------------------------------------- log */
 function viewLog(){
   var h = '<div class="stack">' + cycleBar() + '<div class="card">';
@@ -832,6 +1024,39 @@ var EXTRA = {
     ofRecorded: "of what has been tested",
     act_archive: "archived",
     act_restore: "restored",
+    act_merchant_edit: "account edited",
+    act_ownership: "ownership set",
+    nav_mids: "Merchant accounts",
+    midAccounts: "Merchant accounts",
+    midTerminals: "terminals",
+    midTerminal: "terminal",
+    midNone: "No merchant account on file yet.",
+    midNoPurpose: "No purpose recorded",
+    midLabel: "Name",
+    midNumber: "MID",
+    midPurpose: "What this account is for",
+    midBatch: "Batch close (processor)",
+    midZout: "Z-out (POS)",
+    midClash: "The processor closes its batch at a different time than the POS runs its Z-out. Anything rung between the two settles on one day and reports on the other.",
+    midShared: "This MID is on more than one account. One of them is wrong \u2014 a terminal cannot sit on another processor's merchant account.",
+    midClashes: "Time mismatches",
+    midUnknownOwn: "Ownership unknown",
+    midPhone: "Support phone",
+    midEmail: "Support email",
+    midRep: "Account rep",
+    midPortal: "Merchant portal",
+    midOpenPortal: "Open the portal",
+    midFee: "Account fee / month",
+    midNotes: "Notes",
+    midEdit: "Edit this account",
+    midNeedsMid: "An account needs its MID.",
+    owned: "Owned",
+    rented: "Rented",
+    ownUnknown: "Unknown",
+    ownership: "Owned / rented",
+    rental: "Rental / month",
+    perMonth: " / mo",
+    purpose: "Purpose",
   },
   fr: {
     proofLead: "Photographiez la copie marchand signée. Le registre refuse le test sans elle.",
@@ -876,6 +1101,39 @@ var EXTRA = {
     ofRecorded: "de ce qui a été testé",
     act_archive: "archivé",
     act_restore: "remis en service",
+    act_merchant_edit: "compte modifié",
+    act_ownership: "propriété définie",
+    nav_mids: "Comptes marchands",
+    midAccounts: "Comptes marchands",
+    midTerminals: "terminaux",
+    midTerminal: "terminal",
+    midNone: "Aucun compte marchand au dossier.",
+    midNoPurpose: "Aucune utilité inscrite",
+    midLabel: "Nom",
+    midNumber: "MID",
+    midPurpose: "À quoi sert ce compte",
+    midBatch: "Fermeture de lot (processeur)",
+    midZout: "Z-out (PDV)",
+    midClash: "Le processeur ferme son lot à une heure différente du Z-out du PDV. Toute vente passée entre les deux est déposée un jour et rapportée l\u2019autre.",
+    midShared: "Ce MID est sur plus d\u2019un compte. L\u2019un des deux est faux \u2014 un terminal ne peut pas être sur le compte marchand d\u2019un autre processeur.",
+    midClashes: "Heures qui ne concordent pas",
+    midUnknownOwn: "Propriété inconnue",
+    midPhone: "Téléphone du soutien",
+    midEmail: "Courriel du soutien",
+    midRep: "Représentant",
+    midPortal: "Portail marchand",
+    midOpenPortal: "Ouvrir le portail",
+    midFee: "Frais du compte / mois",
+    midNotes: "Notes",
+    midEdit: "Modifier ce compte",
+    midNeedsMid: "Un compte doit avoir son MID.",
+    owned: "Acheté",
+    rented: "Loué",
+    ownUnknown: "Inconnu",
+    ownership: "Acheté / loué",
+    rental: "Location / mois",
+    perMonth: " / mois",
+    purpose: "Utilité",
   },
 };
 
@@ -1157,6 +1415,7 @@ function render() {
   var body = ui.view === "dash" ? viewDash()
     : ui.view === "dev" ? viewDevices()
     : ui.view === "log" ? viewLog()
+    : ui.view === "mids" ? viewMids()
     : viewGuide();
 
   var h = '<header class="topbar"><div class="wrap topbar-in">'
@@ -1165,6 +1424,7 @@ function render() {
     + (isAdmin() ? '<button data-act="view" data-v="dash"  aria-current="' + (ui.view === "dash") + '">' + esc(t("nav_dash")) + '</button>' : '')
     + '<button data-act="view" data-v="dev"   aria-current="' + (ui.view === "dev") + '">' + esc(t("nav_dev")) + '</button>'
     + (isAdmin() ? '<button data-act="view" data-v="log"   aria-current="' + (ui.view === "log") + '">' + esc(t("nav_log")) + '</button>' : '')
+    + '<button data-act="view" data-v="mids"  aria-current="' + (ui.view === "mids") + '">' + esc(t("nav_mids")) + '</button>'
     + '<button data-act="view" data-v="guide" aria-current="' + (ui.view === "guide") + '">' + esc(t("nav_guide")) + '</button>'
     + '</nav>'
     + '<div class="tool">'
@@ -1227,6 +1487,29 @@ document.addEventListener("click", function (ev) {
     return;
   }
   if (a === "togglearch") { ui.showArchived = !ui.showArchived; render(); return; }
+  if (a === "togglemid") {
+    var mi = el.getAttribute("data-mid");
+    ui.openMid = ui.openMid === mi ? null : mi;
+    ui.midEdit = null; ui.midErr = "";
+    render(); return;
+  }
+  if (a === "editmid") {
+    if (!isAdmin()) return;
+    var em = state.merchants.filter(function (x) { return x.id === el.getAttribute("data-mid"); })[0];
+    if (!em) return;
+    /* The draft is keyed the way the server names its columns, so saving is a
+       straight hand-off with nothing to translate in between. */
+    ui.midEdit = {
+      id: em.id, label: em.label, mid: em.mid, purpose: em.purpose,
+      batch_close: em.batch, pos_zout: em.zout,
+      support_phone: em.phone, support_email: em.email,
+      account_rep: em.rep, portal_url: em.portal,
+      monthly_fee: em.fee, notes: em.notes,
+    };
+    ui.midErr = ""; render(); return;
+  }
+  if (a === "cancelmid") { ui.midEdit = null; ui.midErr = ""; render(); return; }
+  if (a === "savemid") { saveMid(); return; }
   if (a === "archive") {
     if (!isAdmin()) return;
     ui.modal = { kind: "archive", dev: el.getAttribute("data-dev"), reason: "", actor: tester(), err: "" };
@@ -1284,6 +1567,41 @@ document.addEventListener("click", function (ev) {
   }
 });
 
+function saveMid() {
+  var d = ui.midEdit;
+  if (!d || ui.midSaving) return;
+  var patch = {};
+  ["label", "mid", "purpose", "batch_close", "pos_zout", "support_phone",
+   "support_email", "account_rep", "portal_url", "monthly_fee", "notes"]
+    .forEach(function (k) { patch[k] = d[k] == null ? "" : String(d[k]).trim(); });
+  if (!patch.mid) { ui.midErr = t("midNeedsMid"); render(); return; }
+
+  ui.midSaving = true; ui.midErr = ""; setSave("busy", t("saving")); render();
+  api.saveMerchant(d.id, patch, tester()).then(function () {
+    ui.midSaving = false; ui.midEdit = null;
+    setSave("ok", t("saved"));
+    return refresh();
+  }).then(function () {
+    setTimeout(function () { if (ui.saveState === "ok") setSave("", ""); }, 2600);
+  }).catch(function (err) {
+    ui.midSaving = false;
+    ui.midErr = err.code === "admin_only" ? t("adminOnly") : errText(err);
+    setSave("err", t("saveErr")); render();
+  });
+}
+
+/* Ownership saves the moment it is chosen — it is one field, and a Save button
+   next to a dropdown is a button nobody presses. */
+function saveOwnership(terminalId, ownership, rental) {
+  setSave("busy", t("saving"));
+  api.setOwnership(terminalId, ownership, rental, tester()).then(function () {
+    setSave("ok", t("saved"));
+    return refresh();
+  }).then(function () {
+    setTimeout(function () { if (ui.saveState === "ok") setSave("", ""); }, 2600);
+  }).catch(function (err) { setSave("err", errText(err)); });
+}
+
 function doArchive() {
   var m = ui.modal;
   if (!m || m.busy) return;
@@ -1306,6 +1624,10 @@ function doArchive() {
 document.addEventListener("input", function (ev) {
   var el = ev.target;
   if (el.getAttribute && el.getAttribute("data-gate")) { ui.gateCode = el.value; return; }
+  /* The merchant editor names its inputs after the server's columns, so it has
+     its own attribute and has to be read before the data-fld gate below. */
+  var mf = el.getAttribute && el.getAttribute("data-midfld");
+  if (mf) { if (ui.midEdit) ui.midEdit[mf] = el.value; return; }
   var f = el.getAttribute && el.getAttribute("data-fld");
   if (!f) return;
   if (f === "q") {
@@ -1327,9 +1649,25 @@ document.addEventListener("change", function (ev) {
     pickProof(bits[0], bits[1], el.files && el.files[0]);
     return;
   }
+  var ow = el.getAttribute && el.getAttribute("data-own");
+  if (ow) {
+    var row = dev(ow);
+    saveOwnership(ow, el.value, row && row.rental !== "" ? Number(row.rental) : null);
+    return;
+  }
   var f = el.getAttribute && el.getAttribute("data-fld");
   if (f === "store") { ui.store = el.value; render(); return; }
 });
+
+document.addEventListener("blur", function (ev) {
+  var el = ev.target;
+  var rid = el && el.getAttribute && el.getAttribute("data-rent");
+  if (!rid) return;
+  var row = dev(rid);
+  var was = row ? String(row.rental) : "";
+  if (el.value.trim() === was.trim()) return;
+  saveOwnership(rid, row ? row.ownership : "", el.value.trim() === "" ? null : Number(el.value));
+}, true);
 
 document.addEventListener("keydown", function (ev) {
   if (ev.key === "Enter" && ev.target && ev.target.getAttribute && ev.target.getAttribute("data-gate")) {

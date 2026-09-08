@@ -85,6 +85,61 @@ export async function setTerminalActive(id: string, active: boolean) {
      returning id, store_code, active`);
 }
 
+/* ---------- merchant accounts ---------- */
+
+/**
+ * The accounts a processor bills and settles, scoped like everything else: a
+ * store sees the accounts behind its own terminals and no one else's. Contract
+ * and cost detail is head office's business, so it is stripped for a store
+ * scope rather than merely hidden in the page — a payload the browser never
+ * receives cannot leak from it.
+ */
+export async function merchantAccounts(scope: string | null) {
+  const rows = await sql`
+    select * from cert.merchant_accounts
+     where (${scope}::text is null or store_code = ${scope})
+     order by store_code, processor, pos`;
+  if (!scope) return rows;
+  return rows.map((r: Record<string, unknown>) => {
+    const { monthly_fee: _f, account_rep: _r, notes: _n, ...rest } = r;
+    return rest;
+  });
+}
+
+/** The columns head office may change. Anything else in the body is ignored. */
+const MERCHANT_FIELDS = [
+  "mid", "label", "purpose", "batch_close", "pos_zout",
+  "support_phone", "support_email", "account_rep", "portal_url",
+  "monthly_fee", "notes",
+] as const;
+
+export async function setMerchantAccount(id: string, patch: Record<string, unknown>) {
+  const clean: Record<string, unknown> = {};
+  for (const k of MERCHANT_FIELDS) {
+    if (!(k in patch)) continue;
+    const v = patch[k];
+    // "" means "cleared", which for a time or a number has to be null, not ''.
+    clean[k] = v === "" || v === undefined ? null : v;
+  }
+  if (!Object.keys(clean).length) return null;
+  clean.updated_at = new Date().toISOString();
+  return one(await sql`
+    update cert.merchant_accounts set ${sql(clean)}
+     where id = ${id}
+     returning *`);
+}
+
+/** Whether the box is ours or the processor's, and what it costs a month. */
+export async function setTerminalOwnership(
+  id: string, ownership: string | null, monthlyRental: number | null,
+) {
+  return one(await sql<{ id: string; store_code: string }[]>`
+    update cert.terminals
+       set ownership = ${ownership}, monthly_rental = ${monthlyRental}, updated_at = now()
+     where id = ${id}
+     returning id, store_code`);
+}
+
 export async function testFolders() {
   return await sql<{ terminal_id: string; test_code: string; drive_folder_id: string }[]>`
     select terminal_id, test_code, drive_folder_id from cert.terminal_test_folders`;

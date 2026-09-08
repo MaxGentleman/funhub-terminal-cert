@@ -94,6 +94,23 @@ export function setTerminalActive(terminalId, active, reason, actor) {
   });
 }
 
+/** Edit a merchant account. Head office only, re-checked on the server. */
+export function saveMerchant(merchantId, patch, actor) {
+  return call("terminal", {
+    body: { action: "merchant", merchant_id: merchantId, patch: patch, actor: actor || "" },
+  });
+}
+
+/** Whether a terminal is ours or the processor's, and what it costs a month. */
+export function setOwnership(terminalId, ownership, monthlyRental, actor) {
+  return call("terminal", {
+    body: {
+      action: "owner", terminal_id: terminalId,
+      ownership: ownership || null, monthly_rental: monthlyRental, actor: actor || "",
+    },
+  });
+}
+
 /**
  * Mirror new proofs into Drive. Never awaited by anything the manager is
  * waiting on: Drive being slow must not make finishing a test feel slow.
