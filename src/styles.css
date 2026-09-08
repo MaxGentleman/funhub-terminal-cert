@@ -469,3 +469,6 @@ tr.badrow td{background:var(--fail-bg)}
   .mid-num{grid-column:1 / -1}
   .mid-cnt,.mid-times{grid-column:auto}
 }
+.serbox{width:132px;font-size:12px;padding:3px 7px;border:1px solid var(--line);
+  border-radius:6px;background:var(--surface);color:var(--ink)}
+.serialedit{display:inline-flex;align-items:center;gap:6px}

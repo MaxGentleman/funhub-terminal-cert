@@ -129,13 +129,25 @@ export async function setMerchantAccount(id: string, patch: Record<string, unkno
      returning *`);
 }
 
-/** Whether the box is ours or the processor's, and what it costs a month. */
-export async function setTerminalOwnership(
-  id: string, ownership: string | null, monthlyRental: number | null,
-) {
+/**
+ * The facts about a physical box that head office keeps: whose it is, what it
+ * costs a month, and the serial stamped on its underside. Only the keys
+ * actually present are touched, so setting a serial cannot silently wipe an
+ * ownership someone else just recorded.
+ */
+const TERMINAL_FIELDS = ["ownership", "monthly_rental", "serial"] as const;
+
+export async function setTerminalFields(id: string, patch: Record<string, unknown>) {
+  const clean: Record<string, unknown> = {};
+  for (const k of TERMINAL_FIELDS) {
+    if (!(k in patch)) continue;
+    const v = patch[k];
+    clean[k] = v === "" || v === undefined ? null : v;
+  }
+  if (!Object.keys(clean).length) return null;
+  clean.updated_at = new Date().toISOString();
   return one(await sql<{ id: string; store_code: string }[]>`
-    update cert.terminals
-       set ownership = ${ownership}, monthly_rental = ${monthlyRental}, updated_at = now()
+    update cert.terminals set ${sql(clean)}
      where id = ${id}
      returning id, store_code`);
 }

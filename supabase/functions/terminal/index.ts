@@ -2,7 +2,7 @@
 // `action`:
 //   archive  { terminal_id, active, reason, actor }  archive or restore
 //   merchant { merchant_id, patch, actor }           edit a merchant account
-//   owner    { terminal_id, ownership, monthly_rental, actor }
+//   device   { terminal_id, fields: { ownership, monthly_rental, serial }, actor }
 //
 // One function rather than three because every one of these is the same
 // decision — head office changing a fact about the fleet — and each new Edge
@@ -14,7 +14,7 @@
 // results stay on the row, and the change is written to the audit log with the
 // person who made it, so an archived terminal is a decision with a name on it.
 import { currentCycle, terminalRef, setTerminalActive, setMerchantAccount,
-         setTerminalOwnership, logAudit } from "../_shared/db.ts";
+         setTerminalFields, logAudit } from "../_shared/db.ts";
 import { bearer, verify, isAdmin } from "../_shared/session.ts";
 import { json, preflight } from "../_shared/cors.ts";
 
@@ -54,25 +54,43 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (action === "owner") {
+  if (action === "device" || action === "owner") {
     const tid = String(b.terminal_id ?? "");
-    const own = b.ownership === "owned" || b.ownership === "rented" ? String(b.ownership) : null;
-    const rentRaw = b.monthly_rental;
-    const rent = rentRaw === "" || rentRaw == null ? null : Number(rentRaw);
     if (!tid) return json({ error: "terminal_id_required" }, 400, origin);
-    if (rent !== null && !Number.isFinite(rent)) return json({ error: "bad_rental" }, 400, origin);
+    const raw = (b.fields ?? b) as Record<string, unknown>;
+    const fields: Record<string, unknown> = {};
+
+    if ("ownership" in raw) {
+      fields.ownership = raw.ownership === "owned" || raw.ownership === "rented"
+        ? String(raw.ownership) : null;
+    }
+    if ("monthly_rental" in raw) {
+      const r = raw.monthly_rental;
+      const rent = r === "" || r == null ? null : Number(r);
+      if (rent !== null && !Number.isFinite(rent)) return json({ error: "bad_rental" }, 400, origin);
+      fields.monthly_rental = rent;
+    }
+    // A serial is whatever is printed on the box; trimmed, capped, not parsed.
+    if ("serial" in raw) fields.serial = String(raw.serial ?? "").trim().slice(0, 64);
+
+    if (!Object.keys(fields).length) return json({ error: "nothing_to_change" }, 400, origin);
+
     try {
-      const row = await setTerminalOwnership(tid, own, rent);
+      const row = await setTerminalFields(tid, fields);
       if (!row) return json({ error: "unknown_terminal" }, 404, origin);
+      const said = Object.keys(fields).map((k) => {
+        const v = fields[k];
+        return `${k}=${v === null || v === "" ? "—" : v}`;
+      }).join(", ");
       await logAudit({
         cycle_id: cycleNow?.id ?? "", terminal_id: tid, test_code: "",
-        store_code: row.store_code, action: "ownership", result: null,
+        store_code: row.store_code, action: "device_edit", result: null,
         actor: String(b.actor ?? "").trim() || "head office",
-        detail: own ? `${own}${rent !== null ? ` · $${rent}/mo` : ""}` : "cleared",
+        detail: said,
       });
       return json({ ok: true, terminal_id: row.id }, 200, origin);
     } catch (e) {
-      console.error("ownership edit failed", String(e));
+      console.error("device edit failed", String(e));
       return json({ error: "server_error" }, 500, origin);
     }
   }

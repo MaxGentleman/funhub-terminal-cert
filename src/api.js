@@ -101,13 +101,14 @@ export function saveMerchant(merchantId, patch, actor) {
   });
 }
 
-/** Whether a terminal is ours or the processor's, and what it costs a month. */
-export function setOwnership(terminalId, ownership, monthlyRental, actor) {
+/**
+ * The facts about a physical box: whose it is, what it costs, its serial.
+ * Only the keys passed are touched, so two people editing different columns of
+ * the same terminal do not overwrite each other.
+ */
+export function setDeviceFields(terminalId, fields, actor) {
   return call("terminal", {
-    body: {
-      action: "owner", terminal_id: terminalId,
-      ownership: ownership || null, monthly_rental: monthlyRental, actor: actor || "",
-    },
+    body: { action: "device", terminal_id: terminalId, fields: fields, actor: actor || "" },
   });
 }
 

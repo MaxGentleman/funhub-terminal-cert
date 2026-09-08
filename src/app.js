@@ -577,7 +577,9 @@ function deviceCard(d){
       +'<span>'+esc(t("processor"))+' <b>'+esc(d.proc)+'</b></span>'
       +'<span>'+esc(t("model"))+' <b>'+esc(d.model)+'</b></span>'
       +'<span>'+esc(t("mid"))+' <b>'+esc(d.mid||"—")+'</b></span>'
-      +(d.serial?'<span>'+esc(t("serial"))+' <b>'+esc(d.serial)+'</b></span>':'')
+      +(isAdmin()
+        ? '<span class="serialedit">'+esc(t("serial"))+' <input class="serbox mono" data-tf="serial:'+att(d.id)+'" value="'+att(d.serial)+'" placeholder="'+att(t("serialAdd"))+'"></span>'
+        : (d.serial?'<span>'+esc(t("serial"))+' <b>'+esc(d.serial)+'</b></span>':''))
       +'<span>'+esc(t("pos"))+' <b>'+esc(d.pos)+'</b></span>'
       +'<span><a href="'+att(folderHref(d.drive))+'" target="_blank" rel="noopener">'+esc(t("openFolder"))+' ↗</a></span>'
       + (isAdmin() ? '<span class="archcell"><button class="btn sm ghost danger" data-act="archive" data-dev="'+att(d.id)+'">'+esc(t("archiveBtn"))+'</button></span>' : '')
@@ -767,7 +769,8 @@ function midCard(m){
 
     h += '<div class="mid-terms"><table><thead><tr>'
       + '<th>' + esc(t("log_dev")) + '</th><th>' + esc(t("model")) + '</th>'
-      + '<th>' + esc(t("purpose")) + '</th><th>' + esc(t("ownership")) + '</th>'
+      + '<th>' + esc(t("serial")) + '</th>'
+      + '<th>' + esc(t("ownership")) + '</th>'
       + (m.full ? '<th>' + esc(t("rental")) + '</th>' : '') + '</tr></thead><tbody>';
     st.list.forEach(function(d){
       var own = d.ownership
@@ -776,7 +779,9 @@ function midCard(m){
       h += '<tr' + (d.active === false ? ' class="offrow"' : '') + '>'
         + '<td class="m">' + esc(d.id) + ' · ' + esc(d.name) + (d.active === false ? ' <span class="dim">(' + esc(t("archivedPill")) + ')</span>' : '') + '</td>'
         + '<td class="m">' + esc(d.proc) + ' ' + esc(d.model) + '</td>'
-        + '<td>' + esc(d.purpose) + '</td>'
+        + '<td>' + (isAdmin()
+            ? '<input class="serbox mono" data-tf="serial:' + att(d.id) + '" value="' + att(d.serial) + '" placeholder="—">'
+            : (d.serial ? '<span class="mono">' + esc(d.serial) + '</span>' : '<span class="dim">—</span>')) + '</td>'
         + '<td>' + (isAdmin()
             ? '<select data-own="' + att(d.id) + '">'
               + '<option value=""' + (!d.ownership ? " selected" : "") + '>' + esc(t("ownUnknown")) + '</option>'
@@ -785,7 +790,7 @@ function midCard(m){
               + '</select>'
             : own) + '</td>'
         + (m.full ? '<td>' + (isAdmin()
-            ? '<input class="rentbox mono" data-rent="' + att(d.id) + '" value="' + att(d.rental) + '" placeholder="—">'
+            ? '<input class="rentbox mono" data-tf="monthly_rental:' + att(d.id) + '" value="' + att(d.rental) + '" placeholder="—">'
             : (d.rental ? esc(money(d.rental)) : '<span class="dim">—</span>')) + '</td>' : '')
         + '</tr>';
     });
@@ -1026,6 +1031,8 @@ var EXTRA = {
     act_restore: "restored",
     act_merchant_edit: "account edited",
     act_ownership: "ownership set",
+    act_device_edit: "device updated",
+    serialAdd: "not recorded",
     nav_mids: "Merchant accounts",
     midAccounts: "Merchant accounts",
     midTerminals: "terminals",
@@ -1103,6 +1110,8 @@ var EXTRA = {
     act_restore: "remis en service",
     act_merchant_edit: "compte modifié",
     act_ownership: "propriété définie",
+    act_device_edit: "terminal mis à jour",
+    serialAdd: "non inscrit",
     nav_mids: "Comptes marchands",
     midAccounts: "Comptes marchands",
     midTerminals: "terminaux",
@@ -1590,11 +1599,12 @@ function saveMid() {
   });
 }
 
-/* Ownership saves the moment it is chosen — it is one field, and a Save button
-   next to a dropdown is a button nobody presses. */
-function saveOwnership(terminalId, ownership, rental) {
+/* Each of these is one field, and a Save button next to a single input is a
+   button nobody presses — so a dropdown commits on change and a text box on
+   blur. Only the field that moved is sent. */
+function saveDevice(terminalId, fields) {
   setSave("busy", t("saving"));
-  api.setOwnership(terminalId, ownership, rental, tester()).then(function () {
+  api.setDeviceFields(terminalId, fields, tester()).then(function () {
     setSave("ok", t("saved"));
     return refresh();
   }).then(function () {
@@ -1650,23 +1660,24 @@ document.addEventListener("change", function (ev) {
     return;
   }
   var ow = el.getAttribute && el.getAttribute("data-own");
-  if (ow) {
-    var row = dev(ow);
-    saveOwnership(ow, el.value, row && row.rental !== "" ? Number(row.rental) : null);
-    return;
-  }
+  if (ow) { saveDevice(ow, { ownership: el.value }); return; }
   var f = el.getAttribute && el.getAttribute("data-fld");
   if (f === "store") { ui.store = el.value; render(); return; }
 });
 
 document.addEventListener("blur", function (ev) {
   var el = ev.target;
-  var rid = el && el.getAttribute && el.getAttribute("data-rent");
-  if (!rid) return;
-  var row = dev(rid);
-  var was = row ? String(row.rental) : "";
-  if (el.value.trim() === was.trim()) return;
-  saveOwnership(rid, row ? row.ownership : "", el.value.trim() === "" ? null : Number(el.value));
+  var spec = el && el.getAttribute && el.getAttribute("data-tf");
+  if (!spec) return;
+  var bits = spec.split(":"), field = bits[0], tid = bits.slice(1).join(":");
+  var row = dev(tid);
+  if (!row) return;
+  var was = field === "monthly_rental" ? String(row.rental) : String(row.serial || "");
+  var now = el.value.trim();
+  if (now === String(was).trim()) return;           /* nothing moved */
+  var patch = {};
+  patch[field] = field === "monthly_rental" ? (now === "" ? null : Number(now)) : now;
+  saveDevice(tid, patch);
 }, true);
 
 document.addEventListener("keydown", function (ev) {
