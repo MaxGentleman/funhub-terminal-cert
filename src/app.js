@@ -236,7 +236,9 @@ function midStats(m){
     if(d.active === false) o.archived++; else o.active++;
     if(d.ownership === "owned") o.owned++;
     else if(d.ownership === "rented"){ o.rented++; o.rental += Number(d.rental) || 0; }
-    else o.unknown++;
+    /* An archived box's ownership is nobody's outstanding job, so it is not
+       counted as one — the KPI sits beside the live terminal count. */
+    else if(d.active !== false) o.unknown++;
   });
   o.list = list;
   o.monthly = o.rental + (Number(m.fee) || 0);
