@@ -562,7 +562,7 @@ function deviceCard(d){
     +'<span class="dv-mid dev-cell">'+esc(t("mid"))+'<b>'+esc(d.mid||"—")+'</b></span>'
     +'<span class="dv-pos dev-cell">'+esc(d.proc)+' '+esc(d.model)+'<b>'+esc(d.pos)+'</b></span>'
     +'<span class="dv-seg">'+segBar(d)+'</span>'
-    +'<span class="dev-right">'+statusPill(devStatus(d))+'<span class="mono" style="font-size:11.5px;color:var(--ink-3)">'+s.done+'/'+s.total+'</span><span class="caret">'+(open?"▾":"▸")+'</span></span>'
+    +'<span class="dev-right">'+statusPill(devStatus(d))+'<span class="mono" style="font-size:11.5px;color:var(--ink-3)">'+(s.p+s.n)+'/'+s.total+'</span><span class="caret">'+(open?"▾":"▸")+'</span></span>'
     +'</button>';
 
   if(open){
@@ -621,6 +621,20 @@ function procClass(d){
   if(x.indexOf("windcave")>=0) return "p-windcave";
   return "";
 }
+/* Passed over total, never "done" over total: a test that ran and failed is
+   done, and counting it towards a green 6/6 is exactly the tick-box-without-
+   the-work this register exists to stop. Green only when every test passed;
+   red with the number that failed as soon as one did; grey while in progress. */
+function tally(st){
+  var ok = st.p + st.n;
+  var tone = st.f ? " bad" : (ok === st.total ? " done" : "");
+  var tip = st.f ? t("tallyFail") : (ok === st.total ? t("tallyDone") : t("tallyTodo"));
+  return '<span class="sdev-tally">'
+    + (st.f ? '<span class="failchip">' + esc(plural(st.f, "failOne", "failMany")) + '</span>' : '')
+    + '<span class="sdev-count' + tone + '" title="' + att(tip) + '">' + ok + '/' + st.total + '</span>'
+    + '</span>';
+}
+
 function simpleDeviceCard(d){
   var s2 = devStats(d), open = ui.openDev===d.id, i;
   var h = '<div class="card sdev '+procClass(d)+'">';
@@ -628,7 +642,7 @@ function simpleDeviceCard(d){
     + '<span class="sdev-main"><span class="sdev-name">'+(isAdmin()?esc(d.id)+' · ':'')+esc(d.name)+'</span>'
       + '<span class="sdev-sub"><span class="pbadge">'+esc(d.proc)+' '+esc(d.model)+'</span>'
       + '<span>'+esc(d.purpose)+'</span><span class="mono">'+esc(d.pos)+'</span></span></span>'
-    + '<span class="sdev-count'+(s2.u===0?' done':'')+'">'+(s2.total-s2.u)+'/'+s2.total+'</span>'
+    + tally(s2)
     + '<span class="sdev-caret">'+(open?"▾":"▸")+'</span></button>';
   if(open){
     h += '<div class="sdev-body">';
@@ -662,6 +676,7 @@ function viewDevicesSimple(){
     + '<div class="chipset">'
       + '<button class="chip" data-act="filter" data-v="all"  aria-pressed="'+(ui.filter==="all")+'">'+esc(t("f_all"))+'</button>'
       + '<button class="chip" data-act="filter" data-v="todo" aria-pressed="'+(ui.filter==="todo")+'">'+esc(t("f_todo"))+'</button>'
+      + '<button class="chip" data-act="filter" data-v="fail" aria-pressed="'+(ui.filter==="fail")+'">'+esc(t("f_fail"))+'</button>'
       + '<button class="chip" data-act="filter" data-v="done" aria-pressed="'+(ui.filter==="done")+'">'+esc(t("f_done"))+'</button>'
     + '</div></div>';
   h += '<div class="devlist">';
@@ -1127,6 +1142,10 @@ var EXTRA = {
     act_ownership: "ownership set",
     act_device_edit: "device updated",
     serialAdd: "not recorded",
+    failOne: "failed", failMany: "failed",
+    tallyDone: "Every test passed",
+    tallyFail: "At least one test failed",
+    tallyTodo: "Tests passed so far",
     midShownAs: "Shown everywhere as",
     midUnnamed: "Unnamed account",
     midNoNumber: "no MID",
@@ -1225,6 +1244,10 @@ var EXTRA = {
     act_ownership: "propriété définie",
     act_device_edit: "terminal mis à jour",
     serialAdd: "non inscrit",
+    failOne: "échec", failMany: "échecs",
+    tallyDone: "Tous les tests ont réussi",
+    tallyFail: "Au moins un test a échoué",
+    tallyTodo: "Tests réussis jusqu\u2019ici",
     midShownAs: "Affiché partout comme",
     midUnnamed: "Compte sans nom",
     midNoNumber: "aucun MID",

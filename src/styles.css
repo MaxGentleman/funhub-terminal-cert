@@ -492,3 +492,10 @@ tr.badrow td{background:var(--fail-bg)}
 .tpick.on{border-color:var(--accent);background:var(--surface-3)}
 .tpick input{margin:0}
 .sec-h h2.dim{color:var(--ink-3)}
+
+/* A failed terminal must not read as a finished one at a glance. */
+.sdev-tally{display:inline-flex;align-items:center;gap:8px}
+.sdev-count.bad{color:var(--fail)}
+.failchip{font-family:var(--disp);font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  background:var(--fail-bg);color:var(--fail);border:1px solid var(--fail-line)}
